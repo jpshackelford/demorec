@@ -1,0 +1,42 @@
+# mixed.demorec - Demo mixing terminal and browser
+Output mixed-demo.mp4
+Set Width 1280
+Set Height 720
+
+# ─────────────────────────────────────
+# TERMINAL: Start with CLI
+# ─────────────────────────────────────
+@mode terminal
+Set Theme "Dracula"
+
+Type "echo 'Starting the demo...'"
+Enter
+Sleep 1s
+
+Type "curl -s https://httpbin.org/ip | jq ."
+Enter
+Sleep 3s
+
+# ─────────────────────────────────────
+# BROWSER: Show a website
+# ─────────────────────────────────────
+@mode browser
+
+Navigate "https://example.com"
+Sleep 2s
+
+Highlight "h1"
+Sleep 2s
+Unhighlight "h1"
+
+Scroll "down" 200
+Sleep 1s
+
+# ─────────────────────────────────────
+# TERMINAL: Back to CLI
+# ─────────────────────────────────────
+@mode terminal
+
+Type "echo 'Demo complete!'"
+Enter
+Sleep 2s

@@ -1,0 +1,22 @@
+# hello.demorec - A simple demo
+Output hello.mp4
+Set Width 1280
+Set Height 720
+
+# ─────────────────────────────────────
+# TERMINAL: Say hello
+# ─────────────────────────────────────
+@mode terminal
+Set Theme "Dracula"
+
+Type "echo 'Hello from demorec!'"
+Enter
+Sleep 2s
+
+Type "echo 'This is a terminal demo'"
+Enter
+Sleep 2s
+
+Type "echo 'Pretty cool, right?'"
+Enter
+Sleep 3s

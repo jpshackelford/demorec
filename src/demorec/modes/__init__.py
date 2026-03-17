@@ -1,0 +1,1 @@
+"""Recording modes for demorec."""

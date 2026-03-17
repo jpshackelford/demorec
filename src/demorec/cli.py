@@ -84,15 +84,26 @@ def voices():
     """List available TTS voices."""
     console.print("[bold blue]demorec[/] voices\n")
     
-    console.print("[bold]ElevenLabs voices:[/] (requires ELEVENLABS_API_KEY)")
-    eleven_voices = ["rachel", "adam", "josh", "bella", "antoni", "domi", "elli", "arnold", "sam"]
+    console.print("[bold green]Microsoft Edge TTS[/] (free, high quality - recommended)")
+    edge_voices = {
+        "jenny": "Female, US",
+        "guy": "Male, US",
+        "aria": "Female, US",
+        "davis": "Male, US",
+        "emma": "Female, US",
+        "brian": "Male, US",
+        "sonia": "Female, UK",
+        "ryan": "Male, UK",
+        "natasha": "Female, AU",
+        "william": "Male, AU",
+    }
+    for name, desc in edge_voices.items():
+        console.print(f"  edge:{name:12} [dim]{desc}[/]")
+    
+    console.print("\n[bold yellow]ElevenLabs[/] (requires paid API subscription)")
+    eleven_voices = ["rachel", "adam", "josh", "bella", "sam"]
     for v in eleven_voices:
         console.print(f"  eleven:{v}")
-    
-    console.print("\n[bold]Google TTS:[/] (free fallback)")
-    console.print("  gtts:en  (English)")
-    console.print("  gtts:en-uk  (British English)")
-    console.print("  gtts:en-au  (Australian English)")
 
 
 @main.command()

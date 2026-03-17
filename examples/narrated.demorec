@@ -1,0 +1,30 @@
+# narrated.demorec - Demo with voice narration
+Output narrated.mp4
+Set Width 1280
+Set Height 720
+
+# @voice edge:jenny
+
+# ─────────────────────────────────────
+# TERMINAL: Introduction
+# ─────────────────────────────────────
+@mode terminal
+Set Theme "Dracula"
+
+# @narrate:before "Let me show you how to check your Python version."
+Type "python --version"
+Enter
+Sleep 2s
+
+# @narrate:before "Now let's create a simple hello world script."
+Type "echo 'print(\"Hello, World!\")' > hello.py"
+Enter
+Sleep 1s
+
+# @narrate:before "And run it."
+Type "python hello.py"
+Enter
+Sleep 2s
+
+# @narrate:before "That's all there is to it!"
+Sleep 2s

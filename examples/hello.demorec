@@ -1,22 +1,26 @@
-# hello.demorec - A simple demo
+# hello.demorec - A simple demo with REAL command execution
 Output hello.mp4
 Set Width 1280
 Set Height 720
 
 # ─────────────────────────────────────
-# TERMINAL: Say hello
+# TERMINAL: Real commands, real output!
 # ─────────────────────────────────────
 @mode terminal
 Set Theme "Dracula"
 
-Type "echo 'Hello from demorec!'"
+# Method 1: Run command (types + executes + shows output)
+Run "echo 'Hello from demorec!'"
+Sleep 1s
+
+Run "date"
+Sleep 1s
+
+# Method 2: Type + Enter (also executes for real!)
+Type "uname -s"
+Enter
+Sleep 1s
+
+Type "python3 --version"
 Enter
 Sleep 2s
-
-Type "echo 'This is a terminal demo'"
-Enter
-Sleep 2s
-
-Type "echo 'Pretty cool, right?'"
-Enter
-Sleep 3s

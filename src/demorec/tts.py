@@ -64,14 +64,20 @@ class EdgeTTS:
 
 
 class ElevenLabsTTS:
-    """ElevenLabs TTS engine (requires paid subscription for API voices)."""
+    """ElevenLabs TTS engine - high quality AI voices."""
     
     VOICES = {
+        # Common voices
         "rachel": "21m00Tcm4TlvDq8ikWAM",
         "adam": "pNInz6obpgDQGcFmaJgB", 
         "josh": "TxGEqnHWrfWFTfGW9XjX",
         "bella": "EXAVITQu4vr4xnSDxMaL",
         "sam": "yoZ06aMxZJJ28mfd3POQ",
+        "antoni": "ErXwobaYiN019PkySvjV",
+        "arnold": "VR6AewLTigWG4xSOukaG",
+        "domi": "AZnzlk1XvdvUeBnXmlld",
+        "elli": "MF3mGyEYCl7XYWbV9V6O",
+        "nicole": "piTKgcLEGmPE4e6mEKli",
     }
     
     def __init__(self, voice: str = "rachel"):
@@ -82,7 +88,8 @@ class ElevenLabsTTS:
         if ":" in voice:
             voice = voice.split(":", 1)[1]
         
-        self.voice_id = self.VOICES.get(voice.lower(), self.VOICES["rachel"])
+        # Look up voice ID or use raw value if not found (allows custom voice IDs)
+        self.voice_id = self.VOICES.get(voice.lower(), voice if len(voice) > 10 else self.VOICES["rachel"])
     
     def synthesize(self, text: str, output_path: Path) -> None:
         """Synthesize speech using ElevenLabs API."""
@@ -117,17 +124,18 @@ def get_tts_engine(voice: str | None) -> TTSEngine:
     """Get the appropriate TTS engine for the given voice specifier.
     
     Supported formats:
-        edge:jenny    - Microsoft Edge TTS (default, free, high quality)
-        edge:guy      - Male voice
-        eleven:rachel - ElevenLabs (requires paid API)
+        eleven:rachel - ElevenLabs (default, high quality)
+        eleven:adam   - Male voice
+        edge:jenny    - Microsoft Edge TTS (free fallback)
     """
     if voice is None:
-        voice = "edge:jenny"  # Default to Edge TTS
+        voice = "eleven:rachel"  # Default to ElevenLabs
     
-    if voice.startswith("eleven:"):
-        return ElevenLabsTTS(voice)
-    elif voice.startswith("edge:") or ":" not in voice:
+    if voice.startswith("edge:"):
         return EdgeTTS(voice)
+    elif voice.startswith("eleven:") or ":" not in voice:
+        # Default to ElevenLabs
+        return ElevenLabsTTS(voice)
     else:
         raise ValueError(f"Unknown voice specifier: {voice}")
 

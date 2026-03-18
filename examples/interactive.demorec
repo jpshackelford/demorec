@@ -1,0 +1,36 @@
+# interactive.demorec - Demonstrate full PTY support with ANSI colors and interactive features
+Output interactive.mp4
+Set Width 1280
+Set Height 720
+
+@mode terminal
+
+# Show some colorful output
+Run "echo -e '\e[31mRed\e[0m \e[32mGreen\e[0m \e[34mBlue\e[0m \e[33mYellow\e[0m'"
+Sleep 1s
+
+# Real ls with colors
+Run "ls -la --color=auto /usr" "2s"
+
+# Tab completion demo
+Type "cd /u"
+Tab
+Sleep 0.5s
+Type "sr/lo"
+Tab
+Sleep 0.5s
+Enter
+Sleep 0.5s
+
+Run "pwd"
+Sleep 1s
+
+# History navigation
+Up
+Sleep 0.5s
+Enter
+Sleep 1s
+
+# Show Python version with real execution
+Run "python3 -c \"import sys; print(f'Python {sys.version}')\""
+Sleep 2s

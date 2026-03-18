@@ -1,12 +1,35 @@
-"""Terminal recording mode using xterm.js with real command execution."""
+"""Terminal recording mode using ttyd + xterm.js for full PTY support.
+
+Uses ttyd to create a real PTY connected to xterm.js in a browser,
+enabling full ANSI support, interactive commands, spinners, etc.
+"""
 
 import asyncio
 import subprocess
 import tempfile
-import shlex
+import signal
+import socket
+import time
+import os
 from pathlib import Path
 
 from ..parser import Segment, Command, parse_time
+
+
+def _find_free_port() -> int:
+    """Find an available port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
+def _check_ttyd() -> bool:
+    """Check if ttyd is available."""
+    try:
+        result = subprocess.run(["ttyd", "--version"], capture_output=True)
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
 
 # Dracula theme
 THEMES = {
@@ -60,7 +83,11 @@ THEMES = {
 
 
 class TerminalRecorder:
-    """Records terminal sessions using xterm.js in a headless browser."""
+    """Records terminal sessions using ttyd for full PTY support.
+    
+    Uses ttyd to create a real PTY connected to xterm.js in a browser,
+    enabling full ANSI support, interactive commands, spinners, colors, etc.
+    """
     
     def __init__(self, width: int = 1280, height: int = 720, framerate: int = 30):
         self.width = width
@@ -71,17 +98,24 @@ class TerminalRecorder:
         self.font_size = 16
         self.line_height = 1.2
         self.padding = 20
-        self.prompt = "$ "
-        self._current_line = ""  # Track what's being typed for Type+Enter
+        self.typing_speed = 0.05  # seconds per character
+        self._ttyd_process = None
     
     def record(self, segment: Segment, output: Path):
-        """Record a terminal segment to video with real command execution."""
+        """Record a terminal segment to video with full PTY support."""
         output = output.absolute()
+        
+        if not _check_ttyd():
+            raise RuntimeError(
+                "ttyd not found. Install with:\n"
+                "  wget -qO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64\n"
+                "  chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/ttyd"
+            )
+        
         asyncio.run(self._record_async(segment, output))
     
     async def _record_async(self, segment: Segment, output: Path):
         from playwright.async_api import async_playwright
-        import json
         
         # Process SetTheme commands first
         for cmd in segment.commands:
@@ -90,14 +124,30 @@ class TerminalRecorder:
                 if theme_name in THEMES:
                     self.theme = theme_name
         
-        theme_data = THEMES.get(self.theme, THEMES["dracula"])
+        # Find a free port for ttyd
+        port = _find_free_port()
         
-        # Generate HTML with xterm.js
-        html_content = self._generate_html(theme_data)
+        # Start ttyd with a clean shell
+        env = os.environ.copy()
+        env["TERM"] = "xterm-256color"
+        env["PS1"] = "$ "  # Simple prompt
         
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
-            f.write(html_content)
-            html_path = Path(f.name)
+        # Start ttyd
+        self._ttyd_process = subprocess.Popen(
+            [
+                "ttyd",
+                "--port", str(port),
+                "--writable",  # Allow input
+                "--once",  # Exit after one connection
+                "/bin/bash", "--norc", "--noprofile"
+            ],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        
+        # Wait for ttyd to start
+        await asyncio.sleep(0.5)
         
         try:
             async with async_playwright() as p:
@@ -110,10 +160,12 @@ class TerminalRecorder:
                 )
                 page = await context.new_page()
                 
-                # Load terminal
-                await page.goto(f"file://{html_path}", wait_until="load")
-                await page.wait_for_function("typeof Terminal === 'function'", timeout=10000)
-                await page.wait_for_function("window.ready === true", timeout=10000)
+                # Navigate to ttyd
+                await page.goto(f"http://localhost:{port}", wait_until="networkidle")
+                
+                # Wait for terminal to be ready (ttyd creates #terminal-container with xterm)
+                await page.wait_for_selector(".xterm-screen", timeout=10000)
+                await asyncio.sleep(1.0)  # Let terminal fully initialize
                 
                 # Execute commands
                 for cmd in segment.commands:
@@ -125,7 +177,13 @@ class TerminalRecorder:
                 await context.close()
                 await browser.close()
         finally:
-            html_path.unlink()
+            # Clean up ttyd
+            if self._ttyd_process:
+                self._ttyd_process.terminate()
+                try:
+                    self._ttyd_process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self._ttyd_process.kill()
         
         # Convert video
         video_files = list(output.parent.glob("*.webm"))
@@ -134,203 +192,91 @@ class TerminalRecorder:
             self._convert_to_mp4(latest, output)
             latest.unlink()
     
-    def _generate_html(self, theme: dict) -> str:
-        """Generate xterm.js HTML."""
-        import json
-        from string import Template
+    async def _send_keys(self, page, text: str, delay: float = None):
+        """Send keystrokes to the terminal."""
+        if delay is None:
+            delay = self.typing_speed
         
-        template = Template('''<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { 
-            width: 100%; height: 100%; overflow: hidden;
-            background: $background;
-        }
-        #terminal { width: 100%; height: 100%; padding: ${padding}px; }
-        .xterm-viewport::-webkit-scrollbar { display: none; }
-    </style>
-</head>
-<body>
-    <div id="terminal"></div>
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
-    <script>
-        const term = new Terminal({
-            fontFamily: '$font_family',
-            fontSize: $font_size,
-            lineHeight: $line_height,
-            cursorBlink: true,
-            cursorStyle: 'block',
-            theme: $theme_json,
-            scrollback: 1000,
-        });
-        
-        const fitAddon = new FitAddon.FitAddon();
-        term.loadAddon(fitAddon);
-        term.open(document.getElementById('terminal'));
-        fitAddon.fit();
-        
-        window.term = term;
-        window.ready = true;
-        
-        // Show initial prompt
-        term.write('$prompt');
-    </script>
-</body>
-</html>
-''')
-        return template.substitute(
-            background=theme["background"],
-            padding=self.padding,
-            font_family=self.font_family.replace("'", "\\'"),
-            font_size=self.font_size,
-            line_height=self.line_height,
-            theme_json=json.dumps(theme),
-            prompt=self.prompt,
-        )
+        for char in text:
+            await page.keyboard.type(char, delay=0)
+            if delay > 0:
+                await asyncio.sleep(delay)
     
     async def _execute_command(self, page, cmd: Command):
-        """Execute a command - runs for real and shows output."""
+        """Execute a command in the real PTY."""
         if cmd.name == "SetTheme":
-            pass  # Already processed
+            pass  # Processed earlier (ttyd has its own theming)
         
         elif cmd.name == "Type":
             if cmd.args:
                 text = cmd.args[0]
-                self._current_line += text  # Track what's typed
-                # Type character by character with realistic delay
-                for char in text:
-                    escaped = repr(char)
-                    await page.evaluate(f"term.write({escaped})")
-                    await asyncio.sleep(0.05)
+                await self._send_keys(page, text)
         
         elif cmd.name == "Enter":
-            # Execute whatever was typed
-            command = self._current_line.strip()
-            self._current_line = ""  # Reset
-            
-            await page.evaluate("term.write('\\r\\n')")
-            await asyncio.sleep(0.1)
-            
-            if command:
-                # Actually execute the command
-                try:
-                    result = subprocess.run(
-                        command,
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                        cwd=Path.home(),
-                    )
-                    output = result.stdout + result.stderr
-                except subprocess.TimeoutExpired:
-                    output = "[Command timed out]\n"
-                except Exception as e:
-                    output = f"[Error: {e}]\n"
-                
-                # Display the real output
-                if output:
-                    for line in output.split('\n'):
-                        if line:
-                            safe_line = line.replace('\\', '\\\\').replace("'", "\\'").replace('\r', '')
-                            await page.evaluate(f"term.write('{safe_line}')")
-                        await page.evaluate("term.write('\\r\\n')")
-                        await asyncio.sleep(0.02)
-            
-            # Show prompt
-            await page.evaluate(f"term.write({repr(self.prompt)})")
+            await page.keyboard.press("Enter")
+            await asyncio.sleep(0.3)  # Wait for command to process
         
         elif cmd.name == "Run":
-            # Type command, execute it, show real output
+            # Type command and execute
             if cmd.args:
                 command = cmd.args[0]
+                await self._send_keys(page, command)
+                await page.keyboard.press("Enter")
                 
-                # Type the command visually
-                for char in command:
-                    await page.evaluate(f"term.write({repr(char)})")
-                    await asyncio.sleep(0.04)
-                
-                # Press enter
-                await page.evaluate("term.write('\\r\\n')")
-                await asyncio.sleep(0.1)
-                
-                # Actually execute the command and capture output
-                try:
-                    result = subprocess.run(
-                        command,
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                        cwd=Path.home(),
-                    )
-                    output = result.stdout + result.stderr
-                except subprocess.TimeoutExpired:
-                    output = "[Command timed out]\n"
-                except Exception as e:
-                    output = f"[Error: {e}]\n"
-                
-                # Display the real output
-                if output:
-                    # Convert output to terminal-safe format
-                    for line in output.split('\n'):
-                        if line:
-                            # Escape special characters for JS
-                            safe_line = line.replace('\\', '\\\\').replace("'", "\\'").replace('\r', '')
-                            await page.evaluate(f"term.write('{safe_line}')")
-                        await page.evaluate("term.write('\\r\\n')")
-                        await asyncio.sleep(0.02)  # Small delay between lines
-                
-                # Show prompt
-                await page.evaluate(f"term.write({repr(self.prompt)})")
-                
-                # Wait time for viewing
-                wait_time = float(cmd.args[1]) if len(cmd.args) > 1 else 0.5
+                # Wait for output
+                wait_time = parse_time(cmd.args[1]) if len(cmd.args) > 1 else 1.0
                 await asyncio.sleep(wait_time)
-        
-        elif cmd.name == "Exec":
-            # Execute without typing (instant)
-            if cmd.args:
-                command = cmd.args[0]
-                try:
-                    result = subprocess.run(
-                        command, shell=True, capture_output=True, text=True, timeout=30
-                    )
-                    output = result.stdout + result.stderr
-                except Exception as e:
-                    output = f"[Error: {e}]\n"
-                
-                if output:
-                    for line in output.split('\n'):
-                        if line:
-                            safe_line = line.replace('\\', '\\\\').replace("'", "\\'")
-                            await page.evaluate(f"term.write('{safe_line}')")
-                        await page.evaluate("term.write('\\r\\n')")
-                
-                await page.evaluate(f"term.write({repr(self.prompt)})")
-        
-        elif cmd.name == "Output":
-            # Show text as if it were command output (for scripted demos)
-            if cmd.args:
-                text = cmd.args[0]
-                for line in text.split('\n'):
-                    safe_line = line.replace('\\', '\\\\').replace("'", "\\'")
-                    await page.evaluate(f"term.write('{safe_line}\\r\\n')")
-                    await asyncio.sleep(0.02)
         
         elif cmd.name == "Sleep":
             if cmd.args:
                 seconds = parse_time(cmd.args[0])
                 await asyncio.sleep(seconds)
         
+        elif cmd.name == "Ctrl+C":
+            await page.keyboard.press("Control+c")
+            await asyncio.sleep(0.1)
+        
+        elif cmd.name == "Ctrl+D":
+            await page.keyboard.press("Control+d")
+            await asyncio.sleep(0.1)
+        
+        elif cmd.name == "Ctrl+L":
+            await page.keyboard.press("Control+l")
+            await asyncio.sleep(0.1)
+        
+        elif cmd.name == "Ctrl+Z":
+            await page.keyboard.press("Control+z")
+            await asyncio.sleep(0.1)
+        
+        elif cmd.name == "Tab":
+            await page.keyboard.press("Tab")
+            await asyncio.sleep(0.2)  # Wait for completion
+        
+        elif cmd.name == "Up":
+            await page.keyboard.press("ArrowUp")
+            await asyncio.sleep(0.1)
+        
+        elif cmd.name == "Down":
+            await page.keyboard.press("ArrowDown")
+            await asyncio.sleep(0.1)
+        
+        elif cmd.name == "Backspace":
+            count = int(cmd.args[0]) if cmd.args else 1
+            for _ in range(count):
+                await page.keyboard.press("Backspace")
+                await asyncio.sleep(0.05)
+        
+        elif cmd.name == "Escape":
+            await page.keyboard.press("Escape")
+            await asyncio.sleep(0.1)
+        
+        elif cmd.name == "Space":
+            await page.keyboard.press("Space")
+            await asyncio.sleep(0.05)
+        
         elif cmd.name == "Clear":
-            await page.evaluate("term.clear()")
-            await page.evaluate(f"term.write({repr(self.prompt)})")
+            await page.keyboard.press("Control+l")
+            await asyncio.sleep(0.1)
     
     def _convert_to_mp4(self, webm_path: Path, mp4_path: Path):
         """Convert webm to mp4 using FFmpeg."""

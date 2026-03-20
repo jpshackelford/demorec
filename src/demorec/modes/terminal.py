@@ -89,17 +89,29 @@ class TerminalRecorder:
     enabling full ANSI support, interactive commands, spinners, colors, etc.
     """
     
-    def __init__(self, width: int = 1280, height: int = 720, framerate: int = 30):
+    def __init__(self, width: int = 1280, height: int = 720, framerate: int = 30, rows: int | None = None):
         self.width = width
         self.height = height
         self.framerate = framerate
         self.theme = "dracula"
         self.font_family = "Monaco, 'Cascadia Code', 'Fira Code', monospace"
-        self.font_size = 14  # Smaller font to fit more rows
-        self.line_height = 1.0  # Tighter line spacing
+        self.line_height = 1.0  # Tight line spacing for consistent row calculation
         self.padding = 20
         self.typing_speed = 0.05  # seconds per character
         self._ttyd_process = None
+        
+        # Calculate font size based on desired rows
+        self.desired_rows = rows
+        if rows:
+            # xterm.js uses actual font metrics, not just fontSize * lineHeight
+            # Through testing: at 720p with lineHeight=1.0, the actual row height is ~1.6x font_size
+            # Formula: font_size = viewport_height / (rows * actual_line_height_factor)
+            actual_line_factor = 1.6  # Empirically determined from xterm.js behavior
+            self.font_size = int(self.height / (rows * actual_line_factor))
+            # Clamp to reasonable range
+            self.font_size = max(8, min(32, self.font_size))
+        else:
+            self.font_size = 14  # Default: ~44 rows at 720p
     
     def record(self, segment: Segment, output: Path, timed_narrations: dict = None) -> dict[int, tuple[float, float]]:
         """Record a terminal segment to video with full PTY support.
@@ -255,7 +267,12 @@ class TerminalRecorder:
                     expected_rows = max(24, int((self.height - 10) / (self.font_size * self.line_height)))
                     expected_cols = max(80, int((self.width - 10) / (self.font_size * 0.6)))
                 
-                # Use stty to sync PTY size with xterm's actual dimensions
+                # If user specified desired_rows, use that instead of xterm's calculation
+                # This ensures tput/stty report exactly what the user asked for
+                if self.desired_rows:
+                    expected_rows = self.desired_rows
+                
+                # Use stty to sync PTY size with desired/calculated dimensions
                 stty_cmd = f"stty rows {expected_rows} cols {expected_cols}"
                 await self._execute_command(page, Command(name="Type", args=[stty_cmd]))
                 await self._execute_command(page, Command(name="Enter", args=[]))

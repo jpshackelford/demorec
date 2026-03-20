@@ -33,6 +33,8 @@ class Segment:
     mode: Literal["terminal", "browser"]
     commands: list[Command] = field(default_factory=list)
     narrations: dict[int, Narration] = field(default_factory=dict)  # command_index -> narration
+    # Terminal-specific settings
+    rows: int | None = None  # Desired visible rows (auto-calculates font size)
 
 
 @dataclass
@@ -188,6 +190,18 @@ def parse_script(path: Path) -> Plan:
                 mode = cmd_args[0].lower()
                 if mode in ("terminal", "browser"):
                     current_segment = Segment(mode=mode)
+                    plan.segments.append(current_segment)
+            continue
+        
+        # Handle terminal rows directive: @terminal:rows 30
+        if cmd_name.startswith("@terminal:"):
+            directive = cmd_name.split(":", 1)[1].lower()
+            if directive == "rows" and cmd_args:
+                if current_segment and current_segment.mode == "terminal":
+                    current_segment.rows = int(cmd_args[0])
+                elif current_segment is None:
+                    # Auto-create terminal segment
+                    current_segment = Segment(mode="terminal", rows=int(cmd_args[0]))
                     plan.segments.append(current_segment)
             continue
         

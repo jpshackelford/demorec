@@ -142,6 +142,7 @@ class Runner:
                 width=self.plan.width,
                 height=self.plan.height,
                 framerate=self.plan.framerate,
+                rows=segment.rows,
             )
         else:
             recorder = BrowserRecorder(

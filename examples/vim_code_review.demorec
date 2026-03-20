@@ -1,0 +1,83 @@
+# vim_code_review.demorec - Demo showing code review with vim highlighting
+Output vim_demo.mp4
+Set Width 1280
+Set Height 720
+
+# @voice eleven:rachel
+
+@mode terminal
+Set Theme "Dracula"
+
+# First, let's open the file in vim - announce BEFORE opening
+# @narrate:before "Let's review this Python API client code in vim."
+Type "vim examples/sample_code.py"
+Enter
+Sleep 1s
+
+# Enable line numbers
+Type ":set number"
+Enter
+Sleep 0.5s
+
+# Go to line 6 and highlight the imports (lines 6-8)
+Type "6G"
+Sleep 0.3s
+Type "V"
+Sleep 0.2s
+Type "8G"
+Sleep 0.5s
+# Narrate AFTER highlighting so viewer sees what we're talking about
+# @narrate:after "First, notice the imports. We're using dataclasses and typing for clean, type-safe code."
+Sleep 0.5s
+
+# Clear selection and move to the User dataclass (lines 11-16)
+Escape
+Sleep 0.3s
+Type "11G"
+Sleep 0.3s
+Type "V"
+Sleep 0.2s
+Type "16G"
+Sleep 0.5s
+# @narrate:after "Here's our User dataclass. It defines the structure with an ID, name, email, and an active flag that defaults to true."
+Sleep 0.5s
+
+# Clear and scroll down - announce BEFORE scrolling
+Escape
+Sleep 0.3s
+# @narrate:before "Now let's scroll down to the API methods."
+Type "27G"
+Sleep 0.2s
+Type "zt"
+Sleep 0.5s
+Type "V"
+Sleep 0.2s
+Type "35G"
+Sleep 0.5s
+# @narrate:after "The get_users method makes an authenticated GET request and converts the JSON response into User objects."
+Sleep 0.5s
+
+# Clear and go to the main function - announce BEFORE scrolling
+Escape
+Sleep 0.3s
+# @narrate:before "Finally, let's see how this client is used."
+Type "62G"
+Sleep 0.2s
+Type "zt"
+Sleep 0.5s
+Type "V"
+Sleep 0.2s
+Type "72G"
+Sleep 0.5s
+# @narrate:after "The main function creates a client instance and fetches all users. Simple and clean!"
+Sleep 0.5s
+
+# Exit vim
+Escape
+Sleep 0.3s
+Type ":q!"
+Enter
+Sleep 0.5s
+
+# @narrate:after "That's a quick tour of the code structure."
+Sleep 1s

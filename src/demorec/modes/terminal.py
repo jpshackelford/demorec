@@ -101,9 +101,19 @@ class TerminalRecorder:
         self.typing_speed = 0.05  # seconds per character
         self._ttyd_process = None
     
-    def record(self, segment: Segment, output: Path):
-        """Record a terminal segment to video with full PTY support."""
+    def record(self, segment: Segment, output: Path, timed_narrations: dict = None) -> dict[int, tuple[float, float]]:
+        """Record a terminal segment to video with full PTY support.
+        
+        Args:
+            segment: The segment to record
+            output: Output video file path
+            timed_narrations: Dict mapping cmd_index to TimedNarration objects
+            
+        Returns:
+            Dict mapping command index to (start_time, end_time) in seconds
+        """
         output = output.absolute()
+        self._timed_narrations = timed_narrations or {}
         
         if not _check_ttyd():
             raise RuntimeError(
@@ -112,10 +122,14 @@ class TerminalRecorder:
                 "  chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/ttyd"
             )
         
-        asyncio.run(self._record_async(segment, output))
+        return asyncio.run(self._record_async(segment, output))
     
-    async def _record_async(self, segment: Segment, output: Path):
+    async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
         from playwright.async_api import async_playwright
+        import time
+        
+        # Track command timestamps
+        timestamps: dict[int, tuple[float, float]] = {}
         
         # Process SetTheme commands first
         for cmd in segment.commands:
@@ -127,10 +141,18 @@ class TerminalRecorder:
         # Find a free port for ttyd
         port = _find_free_port()
         
-        # Start ttyd with a clean shell
+        # Start ttyd with a clean shell environment
+        # Critical: Remove OpenHands PS1JSON artifacts by clearing PROMPT_COMMAND
+        # and setting a simple PS1
         env = os.environ.copy()
         env["TERM"] = "xterm-256color"
         env["PS1"] = "$ "  # Simple prompt
+        env["PROMPT_COMMAND"] = ""  # Clear PROMPT_COMMAND that sets PS1JSON
+        
+        # Remove any other prompt-related variables that might interfere
+        for key in list(env.keys()):
+            if "PROMPT" in key and key != "PROMPT_COMMAND":
+                del env[key]
         
         # Start ttyd
         self._ttyd_process = subprocess.Popen(
@@ -167,9 +189,31 @@ class TerminalRecorder:
                 await page.wait_for_selector(".xterm-screen", timeout=10000)
                 await asyncio.sleep(1.0)  # Let terminal fully initialize
                 
-                # Execute commands
-                for cmd in segment.commands:
+                # Mark recording start time
+                recording_start = time.time()
+                
+                # Execute commands with timestamp tracking
+                for cmd_idx, cmd in enumerate(segment.commands):
+                    # Check if this command has narration
+                    narration = self._timed_narrations.get(cmd_idx)
+                    
+                    # Handle "before" narration - add delay before command
+                    if narration and narration.mode == "before":
+                        await asyncio.sleep(narration.duration)
+                    
+                    # Record command start time
+                    cmd_start = time.time() - recording_start
+                    
+                    # Execute the command
                     await self._execute_command(page, cmd)
+                    
+                    # Record command end time
+                    cmd_end = time.time() - recording_start
+                    timestamps[cmd_idx] = (cmd_start, cmd_end)
+                    
+                    # Handle "after" narration - add delay after command
+                    if narration and narration.mode == "after":
+                        await asyncio.sleep(narration.duration)
                 
                 # Final pause
                 await asyncio.sleep(0.5)
@@ -191,6 +235,8 @@ class TerminalRecorder:
             latest = max(video_files, key=lambda f: f.stat().st_mtime)
             self._convert_to_mp4(latest, output)
             latest.unlink()
+        
+        return timestamps
     
     async def _send_keys(self, page, text: str, delay: float = None):
         """Send keystrokes to the terminal."""

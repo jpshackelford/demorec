@@ -195,7 +195,7 @@ jpshackelford/demorec/
 └── README.md
 ```
 
-### What's Working (as of commit `165531f`)
+### What's Working (as of commit `419635f`)
 
 ✅ **Phase 1: Core Infrastructure**
 - Project structure with `pyproject.toml` (uv-compatible)
@@ -207,41 +207,46 @@ jpshackelford/demorec/
 - xterm.js HTML template with theme support
 - Terminal runner using Playwright
 - Full PTY support via ttyd (real command execution)
-- Supports: `Type`, `Enter`, `Sleep`, `Ctrl+X`
+- Supports: `Type`, `Enter`, `Sleep`, `Ctrl+X`, `Escape`
 - ANSI color and styling verified
+- **PS1JSON artifacts automatically cleaned** (no user action needed)
 
-✅ **TTS Integration**
-- ElevenLabs as primary TTS
-- Edge TTS as free fallback
-- `@voice` and `@narrate:*` macro parsing
+✅ **Phase 3: Browser Recording**
+- `modes/browser.py` fully implemented
+- Supports: Navigate, Click, Type, Fill, Press, Sleep, Wait, Scroll, Hover, Highlight, Screenshot
+- Timestamp tracking for narration sync
 
-### What's Not Yet Complete
-
-🔲 **Phase 3: Browser Recording**
-- `modes/browser.py` exists but needs implementation
-- Need: Navigate, Click, Type, Fill, Press, Sleep, Wait, Scroll, Hover, Highlight
-
-🔲 **Phase 4: Video Pipeline**
-- FFmpeg segment concatenation
+✅ **Phase 4: Video Pipeline**
+- FFmpeg segment concatenation working
 - Consistent resolution across terminal/browser segments
 - Smooth transitions between modes
 
-🔲 **Phase 5: Audio Mixing**
-- TTS audio timing calculation
-- FFmpeg audio mixing with video
-- Sync narration with actions
+✅ **Phase 5: Audio Mixing**
+- TTS audio timing calculation with command timestamps
+- FFmpeg audio mixing with `adelay` filter for precise placement
+- **Fixed:** `normalize=0:dropout_transition=0` for consistent volume across sequential narrations
+- Sync narration with actions using `@narrate:before/during/after`
 
-🔲 **Phase 6: Polish**
+✅ **Phase 6: Polish**
 - `demorec install` command (Playwright browser setup)
 - Error messages with line numbers
 - Progress output during recording
-- SRT subtitle generation
+- **SRT subtitle generation** - auto-generates `.srt` file alongside video
+- Caption splitting at 42 chars for readability
+
+✅ **TTS Integration**
+- ElevenLabs as primary TTS (44.1kHz, paid)
+- Edge TTS as free fallback (24kHz)
+- `@voice` and `@narrate:*` macro parsing
+
+### What's Not Yet Complete
 
 🔲 **Phase 7: Advanced (Future)**
 - `Include` directive for reusable snippets
 - Persistent terminal session across mode switches
 - GIF output support
 - Cursor/mouse visualization
+- Embedded subtitles (currently soft subs via separate .srt file)
 
 ---
 
@@ -251,19 +256,12 @@ jpshackelford/demorec/
 
 1. **Container Sandbox Issues:** VHS's chromium sandbox fails in containers. Solution: use Playwright's built-in browser management instead of VHS.
 
-2. **OpenHands PS1JSON:** Always use bash and reset prompt in hidden block:
-   ```tape
-   Set Shell "bash"
-   Hide
-   Type "export PS1='$ ' && export PROMPT_COMMAND=''; clear"
-   Enter
-   Show
-   ```
+2. **OpenHands PS1JSON:** ~~Always use bash and reset prompt in hidden block~~ **Now automatic!** The terminal recorder cleans PS1JSON artifacts by clearing `PROMPT_COMMAND`, `BASH_ENV`, `ENV`, and `BASH_FUNC_*` variables in the child process. Users don't need to do anything.
 
 3. **Narration Timing:** Three modes work well:
-   - `@narrate:before` - speak, then action (for introductions)
+   - `@narrate:before` - speak, then action (for introductions/announcements)
    - `@narrate:during` - action + speech in parallel
-   - `@narrate:after` - action, then speak (for explanations)
+   - `@narrate:after` - action, then speak (for explanations/descriptions)
 
 4. **Caption Splitting:** Auto-split captions at word boundaries when > 42 chars for readability.
 
@@ -284,6 +282,29 @@ jpshackelford/demorec/
 2. **ttyd for Real PTY:** xterm.js alone is just a renderer. Connect to ttyd for actual shell execution.
 
 3. **Edge TTS:** Microsoft Edge TTS is free and higher quality than gTTS - good middle ground.
+
+4. **FFmpeg Audio Mixing for Sequential Clips:** When mixing non-overlapping narration clips, use `amix=inputs=N:normalize=0:dropout_transition=0` to prevent volume fluctuations. Without this, later clips sound louder as earlier clips end.
+
+5. **Vim Scrolling in Demos:** When jumping to a line in vim, use `zt` after `NG` to scroll that line to the top of screen:
+   ```tape
+   Type "27G"   # Go to line 27
+   Type "zt"    # Scroll line 27 to top of screen
+   Type "V"     # Start visual line mode
+   Type "35G"   # Extend selection to line 35
+   ```
+   Other options: `zz` (center), `zb` (bottom).
+
+6. **Narration Timing Best Practices:**
+   | Scenario | Directive | Example |
+   |----------|-----------|---------|
+   | Announce what you'll do | `@narrate:before` | "Let's scroll to the API methods" |
+   | Describe what's visible | `@narrate:after` | "Here's the User dataclass with four fields" |
+   | Explain during action | `@narrate:during` | Background explanation while typing |
+
+7. **Debugging Recorded Videos:** Extract frames at specific timestamps to inspect:
+   ```bash
+   ffmpeg -i video.mp4 -ss 30 -vframes 1 frame_30s.png
+   ```
 
 ---
 

@@ -2,6 +2,7 @@
 
 import asyncio
 import subprocess
+import time
 from pathlib import Path
 
 from ..parser import Segment, Command, parse_time
@@ -14,15 +15,28 @@ class BrowserRecorder:
         self.width = width
         self.height = height
         self.framerate = framerate
+        self._timed_narrations = {}
     
-    def record(self, segment: Segment, output: Path):
-        """Record a browser segment to video."""
-        # Ensure absolute path for Playwright video recording
+    def record(self, segment: Segment, output: Path, timed_narrations: dict = None) -> dict[int, tuple[float, float]]:
+        """Record a browser segment to video.
+        
+        Args:
+            segment: The segment to record
+            output: Output video file path
+            timed_narrations: Dict mapping cmd_index to TimedNarration objects
+            
+        Returns:
+            Dict mapping command index to (start_time, end_time) in seconds
+        """
         output = output.absolute()
-        asyncio.run(self._record_async(segment, output))
+        self._timed_narrations = timed_narrations or {}
+        return asyncio.run(self._record_async(segment, output))
     
-    async def _record_async(self, segment: Segment, output: Path):
+    async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
         from playwright.async_api import async_playwright
+        
+        # Track command timestamps
+        timestamps: dict[int, tuple[float, float]] = {}
         
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -33,9 +47,31 @@ class BrowserRecorder:
             )
             page = await context.new_page()
             
-            # Execute commands
-            for cmd in segment.commands:
+            # Mark recording start time
+            recording_start = time.time()
+            
+            # Execute commands with timestamp tracking
+            for cmd_idx, cmd in enumerate(segment.commands):
+                # Check if this command has narration
+                narration = self._timed_narrations.get(cmd_idx)
+                
+                # Handle "before" narration - add delay before command
+                if narration and narration.mode == "before":
+                    await asyncio.sleep(narration.duration)
+                
+                # Record command start time
+                cmd_start = time.time() - recording_start
+                
+                # Execute the command
                 await self._execute_command(page, cmd)
+                
+                # Record command end time
+                cmd_end = time.time() - recording_start
+                timestamps[cmd_idx] = (cmd_start, cmd_end)
+                
+                # Handle "after" narration - add delay after command
+                if narration and narration.mode == "after":
+                    await asyncio.sleep(narration.duration)
             
             # Close to finalize video
             await context.close()
@@ -47,6 +83,8 @@ class BrowserRecorder:
             latest = max(video_files, key=lambda f: f.stat().st_mtime)
             self._convert_to_mp4(latest, output)
             latest.unlink()
+        
+        return timestamps
     
     async def _execute_command(self, page, cmd: Command):
         """Execute a single browser command."""

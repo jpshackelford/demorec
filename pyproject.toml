@@ -24,6 +24,7 @@ classifiers = [
 
 dependencies = [
     "click>=8.0",
+    "edge-tts>=7.2.7",
     "playwright>=1.40",
     "rich>=13.0",
 ]

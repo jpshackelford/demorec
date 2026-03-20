@@ -1,0 +1,439 @@
+# Demo Recording Tools: Project Context & Background
+
+## Purpose of This Document
+
+This document provides context for an AI agent working on the `jpshackelford/demorec` project. It covers the evolution from separate skills in `.openhands` to the unified `demorec` CLI, key learnings, and next steps.
+
+---
+
+## Part 1: Background - The `.openhands` Skills
+
+### Repository: `jpshackelford/.openhands`
+
+This repository contains OpenHands skills (microagents) that teach agents how to perform specific tasks. Two skills are relevant to demo recording:
+
+### 1. `terminal-recording` Skill (Merged - PR #3)
+
+**Purpose:** Record terminal/CLI demos for PR demonstrations using VHS by Charmbracelet.
+
+**Key Components:**
+- `SKILL.md` - Comprehensive documentation with VHS commands, themes, troubleshooting
+- `scripts/narrated_tape.py` - Python tool to add AI narration to VHS recordings
+- `examples/demo_narrated.tape` - Example tape file with narration macros
+
+**What It Does:**
+- Uses VHS (Go-based terminal recorder) to create GIF/video recordings
+- Supports `.tape` DSL files that script terminal interactions
+- Adds AI narration via ElevenLabs TTS with custom macros (`@narrate:before`, `@narrate:during`, `@narrate:after`)
+- Generates closed captions/subtitles
+
+**Commits & Key Learnings:**
+
+| Commit | Learning |
+|--------|----------|
+| `032c683` - Add terminal-recording skill | Base VHS workflow: install ttyd, write .tape files, render with VHS |
+| `fffdc7b` - Container troubleshooting | **Critical:** VHS chromium sandbox fails in containers. Workaround: use Docker VHS image or switch to bash shell |
+| `e837abf` - AI narration with ElevenLabs | Narration macros parsed from comments, audio generated, then mixed with FFmpeg |
+| `58f0eb3` - Closed caption support | Soft subtitles via FFmpeg, auto-split long captions for readability |
+| `3379e62` - Auto-split captions | Captions > 42 chars split at word boundaries for better UX |
+
+**Discovered Limitations:**
+- VHS requires ttyd + chromium - problematic in sandboxed/container environments
+- Terminal-only - can't record browser interactions
+- Two-pass workflow: generate video, then mix audio separately
+
+### 2. `webtape` Skill (Open PR #4 - Not Merged)
+
+**Purpose:** Record web/browser demos using Playwright with a VHS-like DSL.
+
+**Key Components:**
+- `webtape.py` - ~550 line Python CLI
+- `scripts/tts.py` - TTS integration (ElevenLabs + gTTS fallback)
+- Example `.webtape` files
+
+**What It Does:**
+- Uses Playwright for browser automation and screenshot capture
+- Custom `.webtape` DSL inspired by VHS
+- Supports: Navigate, Click, Type, Fill, Press, Sleep, Wait, Scroll, Hover, Highlight
+- Same narration macro system as terminal-recording
+
+**Why Not Merged:** This work is being superseded by `demorec` which unifies both terminal and browser recording.
+
+### 3. PS1JSON Troubleshooting (Open PR #5)
+
+**The Problem:** When recording in OpenHands environments, the zsh `precmd` hook outputs JSON tracking data (`###PS1JSON###...###PS1END###`) that appears in recordings.
+
+**The Fix:**
+```tape
+Set Shell "bash"
+Hide
+Type "export PS1='$ ' && export PROMPT_COMMAND='' && unset -f precmd preexec 2>/dev/null; clear"
+Enter
+Show
+```
+
+**Learning:** Always use bash (not zsh) and reset the prompt in a hidden block before recording in OpenHands sandboxes.
+
+---
+
+## Part 2: The Vision - `demorec`
+
+### Repository: `jpshackelford/demorec`
+
+**Description:** "Record CLI and web-based demos from a single script"
+
+### Why Unify?
+
+Real-world product demos often require both terminal AND browser:
+- Start a server via CLI → show the web UI
+- Run a build command → verify results in browser  
+- Configure via terminal → interact with the app
+
+**Before:** Two separate tools, two DSLs, manual video stitching
+**After:** One `.demorec` script, one CLI, seamless mode switching
+
+### The Unified DSL
+
+```tape
+# my-demo.demorec
+Output demo.mp4
+Set Width 1280
+Set Height 720
+
+# @voice eleven:rachel
+
+# ─────────────────────────────────────
+# TERMINAL: Install and start server
+# ─────────────────────────────────────
+@mode terminal
+Set Theme "Dracula"
+
+# @narrate:before "Let's install the CLI tool."
+Type "pip install myapp"
+Enter
+Sleep 2s
+
+Type "myapp serve --port 3000"
+Enter
+Sleep 3s
+
+# ─────────────────────────────────────
+# BROWSER: Show the web interface  
+# ─────────────────────────────────────
+@mode browser
+
+# @narrate:before "The web interface is now live."
+Navigate "http://localhost:3000"
+Sleep 2s
+
+Click "#create-new"
+Type "#name" "My Project"
+Click "#save"
+Sleep 2s
+
+# ─────────────────────────────────────
+# TERMINAL: Show the logs
+# ─────────────────────────────────────
+@mode terminal
+
+# @narrate:after "And we can see the request in the terminal logs."
+Sleep 2s
+Ctrl+C
+```
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     my-demo.demorec                         │
+└────────────────────────┬────────────────────────────────────┘
+                         │ parse
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Segment Plan                             │
+│   [terminal:0-15s] → [browser:15-45s] → [terminal:45-55s]   │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+   ┌───────────┐   ┌───────────┐   ┌───────────┐
+   │ Terminal  │   │  Browser  │   │ Terminal  │
+   │  (xterm)  │   │(Playwright)│  │  (xterm)  │
+   └─────┬─────┘   └─────┬─────┘   └─────┬─────┘
+         │               │               │
+         ▼               ▼               ▼
+    segment_0.mp4   segment_1.mp4   segment_2.mp4
+         │               │               │
+         └───────────────┼───────────────┘
+                         │ FFmpeg concat + TTS mix
+                         ▼
+                    demo.mp4 (final)
+```
+
+**Key Insight:** Both terminal AND browser rendering use Playwright. Terminal segments render via xterm.js in a headless browser, enabling seamless video concatenation with consistent dimensions.
+
+---
+
+## Part 3: Current State of `demorec`
+
+### Repository Structure
+
+```
+jpshackelford/demorec/
+├── src/demorec/
+│   ├── __init__.py
+│   ├── cli.py          # Click-based CLI: record, validate, voices
+│   ├── parser.py       # DSL parser for .demorec files
+│   ├── runner.py       # Orchestrates segment recording
+│   ├── tts.py          # TTS integration (ElevenLabs + Edge TTS)
+│   └── modes/
+│       ├── __init__.py
+│       ├── terminal.py # Terminal recording via xterm.js + ttyd
+│       └── browser.py  # Browser recording via Playwright
+├── examples/
+├── pyproject.toml
+└── README.md
+```
+
+### What's Working (as of commit `165531f`)
+
+✅ **Phase 1: Core Infrastructure**
+- Project structure with `pyproject.toml` (uv-compatible)
+- Click CLI entry point (`demorec record`, `demorec validate`, `demorec voices`)
+- DSL parser for `.demorec` files
+- Segment planner (splits script by `@mode` switches)
+
+✅ **Phase 2: Terminal Recording**
+- xterm.js HTML template with theme support
+- Terminal runner using Playwright
+- Full PTY support via ttyd (real command execution)
+- Supports: `Type`, `Enter`, `Sleep`, `Ctrl+X`
+- ANSI color and styling verified
+
+✅ **TTS Integration**
+- ElevenLabs as primary TTS
+- Edge TTS as free fallback
+- `@voice` and `@narrate:*` macro parsing
+
+### What's Not Yet Complete
+
+🔲 **Phase 3: Browser Recording**
+- `modes/browser.py` exists but needs implementation
+- Need: Navigate, Click, Type, Fill, Press, Sleep, Wait, Scroll, Hover, Highlight
+
+🔲 **Phase 4: Video Pipeline**
+- FFmpeg segment concatenation
+- Consistent resolution across terminal/browser segments
+- Smooth transitions between modes
+
+🔲 **Phase 5: Audio Mixing**
+- TTS audio timing calculation
+- FFmpeg audio mixing with video
+- Sync narration with actions
+
+🔲 **Phase 6: Polish**
+- `demorec install` command (Playwright browser setup)
+- Error messages with line numbers
+- Progress output during recording
+- SRT subtitle generation
+
+🔲 **Phase 7: Advanced (Future)**
+- `Include` directive for reusable snippets
+- Persistent terminal session across mode switches
+- GIF output support
+- Cursor/mouse visualization
+
+---
+
+## Part 4: Key Learnings to Carry Forward
+
+### From `terminal-recording` Skill
+
+1. **Container Sandbox Issues:** VHS's chromium sandbox fails in containers. Solution: use Playwright's built-in browser management instead of VHS.
+
+2. **OpenHands PS1JSON:** Always use bash and reset prompt in hidden block:
+   ```tape
+   Set Shell "bash"
+   Hide
+   Type "export PS1='$ ' && export PROMPT_COMMAND=''; clear"
+   Enter
+   Show
+   ```
+
+3. **Narration Timing:** Three modes work well:
+   - `@narrate:before` - speak, then action (for introductions)
+   - `@narrate:during` - action + speech in parallel
+   - `@narrate:after` - action, then speak (for explanations)
+
+4. **Caption Splitting:** Auto-split captions at word boundaries when > 42 chars for readability.
+
+5. **TTS Caching:** Cache generated audio to avoid redundant API calls during iterative development.
+
+### From `webtape` Skill
+
+1. **Highlight Action:** Visual highlighting (`Highlight "#selector"`) helps viewers follow along.
+
+2. **Wait vs Sleep:** `Wait` for element appearance is more reliable than hardcoded `Sleep`.
+
+3. **gTTS Fallback:** Google TTS (gTTS) works as free fallback but quality is lower than ElevenLabs.
+
+### From `demorec` Development
+
+1. **Unified Rendering:** Using Playwright for BOTH terminal (xterm.js) and browser ensures consistent video dimensions and easy concatenation.
+
+2. **ttyd for Real PTY:** xterm.js alone is just a renderer. Connect to ttyd for actual shell execution.
+
+3. **Edge TTS:** Microsoft Edge TTS is free and higher quality than gTTS - good middle ground.
+
+---
+
+## Part 5: Next Steps for `demorec`
+
+### Immediate Priority: Browser Mode
+
+Implement `modes/browser.py` to support:
+```python
+# Core actions needed:
+Navigate(url)       # playwright.goto()
+Click(selector)     # playwright.click()
+Type(selector, text) # playwright.type() with delay
+Fill(selector, text) # playwright.fill() instant
+Press(key)          # playwright.press()
+Sleep(duration)     # asyncio.sleep()
+Wait(selector)      # playwright.wait_for_selector()
+Scroll(direction, amount)
+Hover(selector)
+Highlight(selector) # inject CSS border
+Screenshot(filename)
+```
+
+### Then: Video Pipeline
+
+1. Record each segment to `segment_N.mp4`
+2. Create FFmpeg concat demuxer file
+3. Concatenate with consistent resolution
+4. Mix TTS audio track
+
+### Testing Strategy
+
+1. Create test `.demorec` files for each mode
+2. Test mode switching (terminal → browser → terminal)
+3. Test narration sync
+4. Test in OpenHands sandbox (verify PS1JSON handling)
+
+---
+
+## Part 6: Future Skill - `demorec` Skill
+
+Once `demorec` is complete, create a new skill in `jpshackelford/.openhands`:
+
+```
+skills/demorec/
+├── SKILL.md          # Full documentation
+├── README.md
+├── examples/
+│   ├── cli-demo.demorec
+│   ├── webapp-demo.demorec
+│   └── fullstack-demo.demorec
+└── templates/
+    ├── bugfix.demorec
+    └── feature.demorec
+```
+
+**Triggers:**
+- "record a demo"
+- "create a video demo"
+- "demonstrate this feature"
+- "show this working"
+- "PR demo"
+
+**The skill will:**
+1. Help agents install `demorec` (`uv tool install demorec` or `pip install demorec`)
+2. Provide templates for common demo scenarios
+3. Guide writing `.demorec` scripts
+4. Handle OpenHands-specific issues (PS1JSON, container sandboxes)
+5. Publish/embed demos in PRs
+
+---
+
+## Part 7: How to Showcase Current Work
+
+### Demo 1: Terminal Recording (Working Today)
+
+```bash
+# Clone and install
+git clone https://github.com/jpshackelford/demorec
+cd demorec
+uv sync
+
+# Create a simple terminal demo
+cat > hello.demorec << 'EOF'
+Output hello.mp4
+Set Width 800
+Set Height 400
+
+@mode terminal
+Set Theme "Dracula"
+
+Type "echo 'Hello from demorec!'"
+Enter
+Sleep 2s
+
+Type "ls -la"
+Enter
+Sleep 2s
+EOF
+
+# Record it
+uv run demorec record hello.demorec
+```
+
+### Demo 2: With Narration (Requires ELEVENLABS_API_KEY)
+
+```bash
+cat > narrated.demorec << 'EOF'
+Output narrated.mp4
+Set Width 800
+Set Height 400
+
+# @voice eleven:rachel
+
+@mode terminal
+Set Theme "Dracula"
+
+# @narrate:before "Welcome to demorec, the unified demo recorder."
+Type "echo 'Recording terminal and browser demos'"
+Enter
+Sleep 2s
+
+# @narrate:after "That's all there is to it!"
+EOF
+
+ELEVENLABS_API_KEY=your_key uv run demorec record narrated.demorec
+```
+
+### Demo 3: Validate Without Recording
+
+```bash
+uv run demorec validate my-demo.demorec
+# Shows segment breakdown and validation results
+```
+
+### What to Show in a PR/Presentation
+
+1. **The Problem:** Separate tools for terminal vs browser demos, manual stitching
+2. **The Solution:** Single `.demorec` DSL with `@mode` switching
+3. **Working Demo:** Terminal recording with AI narration
+4. **Architecture:** Playwright-based unified rendering
+5. **Roadmap:** Browser mode → video pipeline → full release
+
+---
+
+## Summary
+
+| Repo | Purpose | Status |
+|------|---------|--------|
+| `jpshackelford/.openhands` | Skills teaching agents to record demos | `terminal-recording` merged, `webtape` open PR |
+| `jpshackelford/demorec` | Unified CLI tool combining both | Terminal MVP working, browser mode in progress |
+
+**The Goal:** A single `demorec` CLI that records seamless terminal + browser demos with AI narration, then a skill that teaches agents to use it effectively.

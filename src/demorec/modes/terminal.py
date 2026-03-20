@@ -166,15 +166,25 @@ class TerminalRecorder:
             if "PROMPT" in key and key != "PROMPT_COMMAND":
                 del env[key]
         
-        # Start ttyd
+        # Start ttyd with xterm.js configuration via client options
+        ttyd_cmd = [
+            "ttyd",
+            "--port", str(port),
+            "--writable",  # Allow input
+            "--once",  # Exit after one connection
+            "-t", f"fontSize={self.font_size}",
+            "-t", f"lineHeight={self.line_height}",
+            "-t", f"fontFamily={self.font_family}",
+        ]
+        
+        # Add rows/cols if specified (this sets initial terminal size)
+        if self.desired_rows:
+            ttyd_cmd.extend(["-t", f"rows={self.desired_rows}"])
+        
+        ttyd_cmd.extend(["/bin/bash", "--norc", "--noprofile"])
+        
         self._ttyd_process = subprocess.Popen(
-            [
-                "ttyd",
-                "--port", str(port),
-                "--writable",  # Allow input
-                "--once",  # Exit after one connection
-                "/bin/bash", "--norc", "--noprofile"
-            ],
+            ttyd_cmd,
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -201,9 +211,9 @@ class TerminalRecorder:
                 await page.wait_for_selector(".xterm-screen", timeout=10000)
                 await asyncio.sleep(0.5)  # Let terminal initialize
                 
-                # Configure xterm.js font and size to match our viewport
-                # ttyd exposes the terminal instance as window.term
-                term_info = await page.evaluate("""(config) => {
+                # Make terminal container fill viewport and trigger resize
+                # Font/rows are already configured via ttyd's -t options
+                term_size = await page.evaluate("""() => {
                     // Make terminal container fill viewport
                     const container = document.querySelector('#terminal-container') || 
                                       document.querySelector('.xterm');
@@ -217,67 +227,35 @@ class TerminalRecorder:
                         container.style.margin = '0';
                     }
                     
-                    // Configure xterm.js font settings
-                    if (window.term) {
-                        window.term.options.fontSize = config.fontSize;
-                        window.term.options.lineHeight = config.lineHeight;
-                        window.term.options.fontFamily = config.fontFamily;
-                        
-                        // Force terminal to recalculate dimensions
-                        window.term.refresh(0, window.term.rows - 1);
-                    }
-                    
-                    // Force resize event - this triggers ttyd's fit addon
+                    // Trigger resize to fit terminal to viewport
                     window.dispatchEvent(new Event('resize'));
                     
-                    // Get terminal size info after resize
-                    if (window.term) {
-                        return {
-                            rows: window.term.rows,
-                            cols: window.term.cols
-                        };
-                    }
-                    return null;
-                }""", {
-                    "fontSize": self.font_size,
-                    "lineHeight": self.line_height,
-                    "fontFamily": self.font_family
-                })
-                await asyncio.sleep(0.5)
-                
-                # Trigger another resize to ensure fit addon recalculates with new font
-                await page.evaluate("""() => {
-                    window.dispatchEvent(new Event('resize'));
-                }""")
-                await asyncio.sleep(0.3)
-                
-                # Get the actual terminal dimensions after font change
-                term_size = await page.evaluate("""() => {
+                    // Get terminal dimensions
                     if (window.term) {
                         return { rows: window.term.rows, cols: window.term.cols };
                     }
                     return null;
                 }""")
+                await asyncio.sleep(0.5)
                 
+                # Determine PTY size to set via stty
                 if term_size:
                     expected_rows = term_size['rows']
                     expected_cols = term_size['cols']
                 else:
                     # Fallback calculation
-                    expected_rows = max(24, int((self.height - 10) / (self.font_size * self.line_height)))
-                    expected_cols = max(80, int((self.width - 10) / (self.font_size * 0.6)))
+                    expected_rows = max(24, int(self.height / (self.font_size * 1.6)))
+                    expected_cols = max(80, int(self.width / (self.font_size * 0.6)))
                 
-                # If user specified desired_rows, use that instead of xterm's calculation
-                # This ensures tput/stty report exactly what the user asked for
+                # If user specified desired_rows, override
                 if self.desired_rows:
                     expected_rows = self.desired_rows
                 
-                # Use stty to sync PTY size with desired/calculated dimensions
+                # Sync PTY size with terminal dimensions
                 stty_cmd = f"stty rows {expected_rows} cols {expected_cols}"
                 await self._execute_command(page, Command(name="Type", args=[stty_cmd]))
                 await self._execute_command(page, Command(name="Enter", args=[]))
                 await asyncio.sleep(0.3)
-                # Clear the stty command from screen
                 await self._execute_command(page, Command(name="Type", args=["clear"]))
                 await self._execute_command(page, Command(name="Enter", args=[]))
                 await asyncio.sleep(0.3)

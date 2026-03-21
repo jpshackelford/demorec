@@ -5,6 +5,7 @@ that expected content is visible on screen.
 """
 
 import asyncio
+import os
 import subprocess
 import shutil
 import re
@@ -72,11 +73,14 @@ class TerminalPreviewer:
             screenshot_dir = output_dir or Path(".demorec_preview")
             screenshot_dir.mkdir(exist_ok=True)
         
-        # Find ttyd (check multiple locations)
-        ttyd_path = shutil.which("ttyd")
+        # Find ttyd (check multiple locations including ~/.local/bin)
+        local_bin = str(Path.home() / ".local/bin")
+        search_path = f"{local_bin}:{os.environ.get('PATH', '')}"
+        
+        ttyd_path = shutil.which("ttyd", path=search_path)
         if not ttyd_path:
-            # Check common locations
-            for path in ["/usr/local/bin/ttyd", str(Path.home() / ".local/bin/ttyd")]:
+            # Check common locations explicitly
+            for path in ["/usr/local/bin/ttyd", f"{local_bin}/ttyd"]:
                 if Path(path).exists():
                     ttyd_path = path
                     break
@@ -84,12 +88,31 @@ class TerminalPreviewer:
         if not ttyd_path:
             raise RuntimeError("ttyd not found. Install with: brew install ttyd")
         
-        # Start ttyd on a random port
+        # Start ttyd on a random port with clean environment
         port = 7682
-        shell = shutil.which("bash") or shutil.which("sh")
         
+        # Critical: Remove OpenHands PS1JSON artifacts by clearing PROMPT_COMMAND
+        # and setting a simple PS1
+        env = os.environ.copy()
+        env["TERM"] = "xterm-256color"
+        env["PS1"] = "$ "  # Simple prompt
+        env["PROMPT_COMMAND"] = ""  # Clear PROMPT_COMMAND that sets PS1JSON
+        
+        # Ensure PATH includes common binary locations (including vim)
+        local_bin = str(Path.home() / ".local/bin")
+        current_path = env.get("PATH", "")
+        if local_bin not in current_path:
+            env["PATH"] = f"{local_bin}:{current_path}"
+        
+        # Remove any other prompt-related variables that might interfere
+        for key in list(env.keys()):
+            if "PROMPT" in key and key != "PROMPT_COMMAND":
+                del env[key]
+        
+        # Start ttyd with bash --norc --noprofile to avoid loading any shell configs
         self._ttyd_process = subprocess.Popen(
-            [ttyd_path, "-p", str(port), "--once", shell],
+            [ttyd_path, "-p", str(port), "--writable", "--once", "/bin/bash", "--norc", "--noprofile"],
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -125,6 +148,9 @@ class TerminalPreviewer:
                     
                     # Check if this is a checkpoint
                     if cmd_idx in checkpoint_map:
+                        # Wait for vim to render the visual selection
+                        await asyncio.sleep(0.5)
+                        
                         cp = checkpoint_map[cmd_idx]
                         result = await self._verify_checkpoint(page, cp, screenshot_dir, len(results) + 1)
                         results.append(result)

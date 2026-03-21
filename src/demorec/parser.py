@@ -31,6 +31,7 @@ class Narration:
 class Segment:
     """A segment of commands in a single mode."""
     mode: Literal["terminal", "browser"]
+    session_name: str = "default"  # For terminal sessions (e.g., terminal:server)
     commands: list[Command] = field(default_factory=list)
     narrations: dict[int, Narration] = field(default_factory=dict)  # command_index -> narration
 
@@ -185,9 +186,15 @@ def parse_script(path: Path) -> Plan:
         # Handle mode switch
         if cmd_name == "@mode":
             if cmd_args:
-                mode = cmd_args[0].lower()
+                mode_spec = cmd_args[0].lower()
+                # Parse optional session name: terminal:server -> mode=terminal, session=server
+                if ":" in mode_spec:
+                    mode, session_name = mode_spec.split(":", 1)
+                else:
+                    mode, session_name = mode_spec, "default"
+                
                 if mode in ("terminal", "browser"):
-                    current_segment = Segment(mode=mode)
+                    current_segment = Segment(mode=mode, session_name=session_name)
                     plan.segments.append(current_segment)
             continue
         

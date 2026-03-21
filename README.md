@@ -117,9 +117,15 @@ Set Framerate 30             # Video framerate
 ### Mode Switching
 
 ```tape
-@mode terminal               # Switch to terminal recording
+@mode terminal               # Switch to terminal recording (default session)
+@mode terminal:server        # Switch to named terminal session "server"
+@mode terminal:client        # Switch to named terminal session "client"
 @mode browser                # Switch to browser recording
 ```
+
+**Persistent Sessions:** Terminal state (working directory, environment variables, command history) persists when switching between modes. Returning to the same terminal session reconnects to the existing PTY.
+
+**Named Sessions:** Use `terminal:name` to create multiple independent terminal sessions (e.g., for server/client demos).
 
 ### Terminal Commands
 
@@ -273,6 +279,35 @@ Sleep 3s
 Sleep 2s
 ```
 
+### Multiple Terminal Sessions
+
+```tape
+Output multi-terminal-demo.mp4
+
+# Start a server in one terminal
+@mode terminal:server
+Type "npm start"
+Enter
+Sleep 2s
+
+# Run client commands in another terminal
+@mode terminal:client
+Type "curl http://localhost:3000/api/status"
+Enter
+Sleep 1s
+
+# Switch back to server to see the logged request
+@mode terminal:server
+# Terminal state is preserved - we see the server still running
+Sleep 2s
+
+# Back to client for another request
+@mode terminal:client
+Type "curl -X POST http://localhost:3000/api/data"
+Enter
+Sleep 1s
+```
+
 ---
 
 ## Implementation Checklist
@@ -321,7 +356,8 @@ Sleep 2s
 ### Phase 7: Advanced Features (Future)
 - [ ] `Include` directive for reusable snippets
 - [ ] `Hide`/`Show` for setup commands
-- [ ] Persistent terminal session across mode switches
+- [x] Persistent terminal session across mode switches
+- [x] Multiple named terminal sessions (`@mode terminal:name`)
 - [ ] GIF output support
 - [ ] Cursor/mouse visualization in browser
 - [ ] Picture-in-picture mode

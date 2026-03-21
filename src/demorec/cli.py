@@ -45,7 +45,10 @@ def record(script: Path, output: Path | None, voice: str | None, dry_run: bool):
     console.print(f"[dim]Segments:[/] {len(plan.segments)}")
     
     for i, seg in enumerate(plan.segments):
-        console.print(f"  [cyan]{i+1}.[/] {seg.mode} ({len(seg.commands)} commands)")
+        mode_display = seg.mode
+        if seg.mode == "terminal" and seg.session_name != "default":
+            mode_display = f"{seg.mode}:{seg.session_name}"
+        console.print(f"  [cyan]{i+1}.[/] {mode_display} ({len(seg.commands)} commands)")
     
     if dry_run:
         console.print("\n[yellow]Dry run - not recording[/]")
@@ -59,6 +62,8 @@ def record(script: Path, output: Path | None, voice: str | None, dry_run: bool):
     except Exception as e:
         console.print(f"[bold red]Recording error:[/] {e}")
         raise SystemExit(1)
+    finally:
+        runner.cleanup()
 
 
 @main.command()

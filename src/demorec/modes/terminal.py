@@ -2,6 +2,8 @@
 
 Uses ttyd to create a real PTY connected to xterm.js in a browser,
 enabling full ANSI support, interactive commands, spinners, etc.
+
+Supports persistent sessions across mode switches and multiple named sessions.
 """
 
 import asyncio
@@ -30,6 +32,132 @@ def _check_ttyd() -> bool:
         return result.returncode == 0
     except FileNotFoundError:
         return False
+
+
+class TerminalSession:
+    """Manages a single persistent terminal session via ttyd.
+    
+    The session persists across multiple recording segments, preserving
+    working directory, environment variables, and terminal history.
+    """
+    
+    def __init__(self, name: str = "default"):
+        self.name = name
+        self.port = _find_free_port()
+        self._process: subprocess.Popen | None = None
+        self._started = False
+    
+    def start(self) -> None:
+        """Start the ttyd process for this session."""
+        if self._started:
+            return
+        
+        if not _check_ttyd():
+            raise RuntimeError(
+                "ttyd not found. Install with:\n"
+                "  wget -qO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64\n"
+                "  chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/ttyd"
+            )
+        
+        # Build clean environment for terminal recording
+        # Critical: Remove OpenHands PS1JSON artifacts by clearing PROMPT_COMMAND
+        # and removing any prompt-related variables that might interfere
+        env = os.environ.copy()
+        env["TERM"] = "xterm-256color"
+        env["PS1"] = "$ "  # Simple prompt
+        env["PROMPT_COMMAND"] = ""  # Clear PROMPT_COMMAND that sets PS1JSON
+        
+        # Remove any other prompt-related variables that might interfere
+        for key in list(env.keys()):
+            if "PROMPT" in key and key != "PROMPT_COMMAND":
+                del env[key]
+        
+        # Start ttyd WITHOUT --once so it persists across reconnections
+        self._process = subprocess.Popen(
+            [
+                "ttyd",
+                "--port", str(self.port),
+                "--writable",
+                "/bin/bash", "--norc", "--noprofile"
+            ],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self._started = True
+    
+    def stop(self) -> None:
+        """Stop the ttyd process."""
+        if self._process:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+            self._process = None
+        self._started = False
+    
+    def is_running(self) -> bool:
+        """Check if the ttyd process is still running."""
+        if self._process is None:
+            return False
+        return self._process.poll() is None
+    
+    def __repr__(self) -> str:
+        status = "running" if self.is_running() else "stopped"
+        return f"TerminalSession(name={self.name!r}, port={self.port}, {status})"
+
+
+class TerminalSessionManager:
+    """Manages multiple named terminal sessions.
+    
+    Sessions persist for the lifetime of the manager, allowing terminal
+    state to be preserved across mode switches (terminal -> browser -> terminal).
+    
+    Example:
+        manager = TerminalSessionManager()
+        server = manager.get_or_create("server")  # Creates new session
+        client = manager.get_or_create("client")  # Creates another session
+        server2 = manager.get_or_create("server") # Returns existing session
+        manager.cleanup()  # Stops all sessions
+    """
+    
+    def __init__(self):
+        self._sessions: dict[str, TerminalSession] = {}
+    
+    def get_or_create(self, name: str = "default") -> TerminalSession:
+        """Get an existing session or create a new one.
+        
+        Args:
+            name: Session name (e.g., "default", "server", "client")
+        
+        Returns:
+            The terminal session, started and ready to use.
+        """
+        if name not in self._sessions:
+            session = TerminalSession(name)
+            session.start()
+            self._sessions[name] = session
+        
+        session = self._sessions[name]
+        
+        # Restart if session died
+        if not session.is_running():
+            session.start()
+        
+        return session
+    
+    def cleanup(self) -> None:
+        """Stop all terminal sessions."""
+        for session in self._sessions.values():
+            session.stop()
+        self._sessions.clear()
+    
+    def __len__(self) -> int:
+        return len(self._sessions)
+    
+    def __repr__(self) -> str:
+        return f"TerminalSessionManager({list(self._sessions.keys())})"
 
 # Dracula theme
 THEMES = {
@@ -87,31 +215,34 @@ class TerminalRecorder:
     
     Uses ttyd to create a real PTY connected to xterm.js in a browser,
     enabling full ANSI support, interactive commands, spinners, colors, etc.
+    
+    Supports persistent sessions via TerminalSessionManager, preserving
+    terminal state across mode switches.
     """
     
-    def __init__(self, width: int = 1280, height: int = 720, framerate: int = 30):
+    def __init__(
+        self,
+        width: int = 1280,
+        height: int = 720,
+        framerate: int = 30,
+        session_manager: TerminalSessionManager | None = None,
+        session_name: str = "default",
+    ):
         self.width = width
         self.height = height
         self.framerate = framerate
+        self.session_manager = session_manager
+        self.session_name = session_name
         self.theme = "dracula"
         self.font_family = "Monaco, 'Cascadia Code', 'Fira Code', monospace"
         self.font_size = 16
         self.line_height = 1.2
         self.padding = 20
         self.typing_speed = 0.05  # seconds per character
-        self._ttyd_process = None
     
     def record(self, segment: Segment, output: Path):
         """Record a terminal segment to video with full PTY support."""
         output = output.absolute()
-        
-        if not _check_ttyd():
-            raise RuntimeError(
-                "ttyd not found. Install with:\n"
-                "  wget -qO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64\n"
-                "  chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/ttyd"
-            )
-        
         asyncio.run(self._record_async(segment, output))
     
     async def _record_async(self, segment: Segment, output: Path):
@@ -124,29 +255,17 @@ class TerminalRecorder:
                 if theme_name in THEMES:
                     self.theme = theme_name
         
-        # Find a free port for ttyd
-        port = _find_free_port()
+        # Get or create session (persistent across segments)
+        if self.session_manager:
+            session = self.session_manager.get_or_create(self.session_name)
+            port = session.port
+        else:
+            # Fallback: create temporary session for backward compatibility
+            session = TerminalSession(self.session_name)
+            session.start()
+            port = session.port
         
-        # Start ttyd with a clean shell
-        env = os.environ.copy()
-        env["TERM"] = "xterm-256color"
-        env["PS1"] = "$ "  # Simple prompt
-        
-        # Start ttyd
-        self._ttyd_process = subprocess.Popen(
-            [
-                "ttyd",
-                "--port", str(port),
-                "--writable",  # Allow input
-                "--once",  # Exit after one connection
-                "/bin/bash", "--norc", "--noprofile"
-            ],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        
-        # Wait for ttyd to start
+        # Wait for ttyd to be ready (especially for new sessions)
         await asyncio.sleep(0.5)
         
         try:
@@ -177,13 +296,9 @@ class TerminalRecorder:
                 await context.close()
                 await browser.close()
         finally:
-            # Clean up ttyd
-            if self._ttyd_process:
-                self._ttyd_process.terminate()
-                try:
-                    self._ttyd_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    self._ttyd_process.kill()
+            # Only cleanup session if we created it locally (no session manager)
+            if not self.session_manager:
+                session.stop()
         
         # Convert video
         video_files = list(output.parent.glob("*.webm"))

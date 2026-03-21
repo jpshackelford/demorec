@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .parser import Plan, Segment, Narration
-from .modes.terminal import TerminalRecorder
+from .modes.terminal import TerminalRecorder, TerminalSessionManager
 from .modes.browser import BrowserRecorder
 from .tts import get_tts_engine, get_audio_duration
 
@@ -26,6 +26,8 @@ class Runner:
         self.has_narration = any(
             seg.narrations for seg in plan.segments
         )
+        # Session manager for persistent terminal sessions
+        self.session_manager = TerminalSessionManager()
     
     def run(self):
         """Execute the full recording pipeline."""
@@ -90,6 +92,8 @@ class Runner:
                 width=self.plan.width,
                 height=self.plan.height,
                 framerate=self.plan.framerate,
+                session_manager=self.session_manager,
+                session_name=segment.session_name,
             )
         else:
             recorder = BrowserRecorder(
@@ -188,7 +192,10 @@ class Runner:
         return float(data.get("format", {}).get("duration", 0))
     
     def cleanup(self):
-        """Remove temporary files."""
+        """Remove temporary files and stop terminal sessions."""
         import shutil
+        # Stop all terminal sessions
+        self.session_manager.cleanup()
+        # Remove temp files
         if self.temp_dir.exists():
             shutil.rmtree(self.temp_dir)

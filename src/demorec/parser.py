@@ -34,7 +34,7 @@ class Segment:
     commands: list[Command] = field(default_factory=list)
     narrations: dict[int, Narration] = field(default_factory=dict)  # command_index -> narration
     # Terminal-specific settings
-    rows: int | None = None  # Desired visible rows (auto-calculates font size)
+    size: Literal["large", "medium", "small", "tiny"] | None = None  # Display size preset
 
 
 @dataclass
@@ -193,16 +193,18 @@ def parse_script(path: Path) -> Plan:
                     plan.segments.append(current_segment)
             continue
         
-        # Handle terminal rows directive: @terminal:rows 30
+        # Handle terminal size directive: @terminal:size large|medium|small|tiny
         if cmd_name.startswith("@terminal:"):
             directive = cmd_name.split(":", 1)[1].lower()
-            if directive == "rows" and cmd_args:
-                if current_segment and current_segment.mode == "terminal":
-                    current_segment.rows = int(cmd_args[0])
-                elif current_segment is None:
-                    # Auto-create terminal segment
-                    current_segment = Segment(mode="terminal", rows=int(cmd_args[0]))
-                    plan.segments.append(current_segment)
+            if directive == "size" and cmd_args:
+                size = cmd_args[0].lower()
+                if size in ("large", "medium", "small", "tiny"):
+                    if current_segment and current_segment.mode == "terminal":
+                        current_segment.size = size
+                    elif current_segment is None:
+                        # Auto-create terminal segment
+                        current_segment = Segment(mode="terminal", size=size)
+                        plan.segments.append(current_segment)
             continue
         
         # All other commands require an active segment

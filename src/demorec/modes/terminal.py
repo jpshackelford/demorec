@@ -89,7 +89,15 @@ class TerminalRecorder:
     enabling full ANSI support, interactive commands, spinners, colors, etc.
     """
     
-    def __init__(self, width: int = 1280, height: int = 720, framerate: int = 30, rows: int | None = None):
+    # Size presets: name -> target rows (for 720p viewport)
+    SIZE_PRESETS = {
+        "large": 24,   # Classic terminal, easy to read
+        "medium": 36,  # Balanced readability and content
+        "small": 44,   # Default xterm.js density
+        "tiny": 50,    # Maximum content, smaller text
+    }
+    
+    def __init__(self, width: int = 1280, height: int = 720, framerate: int = 30, size: str | None = None):
         self.width = width
         self.height = height
         self.framerate = framerate
@@ -100,18 +108,10 @@ class TerminalRecorder:
         self.typing_speed = 0.05  # seconds per character
         self._ttyd_process = None
         
-        # Calculate font size based on desired rows
-        self.desired_rows = rows
-        if rows:
-            # xterm.js uses actual font metrics, not just fontSize * lineHeight
-            # Through testing: at 720p with lineHeight=1.0, the actual row height is ~1.6x font_size
-            # Formula: font_size = viewport_height / (rows * actual_line_height_factor)
-            actual_line_factor = 1.6  # Empirically determined from xterm.js behavior
-            self.font_size = int(self.height / (rows * actual_line_factor))
-            # Clamp to reasonable range
-            self.font_size = max(8, min(32, self.font_size))
-        else:
-            self.font_size = 14  # Default: ~44 rows at 720p
+        # Convert size preset to target rows
+        self.size = size
+        self.desired_rows = self.SIZE_PRESETS.get(size) if size else None
+        self.font_size = 14  # Default font size, will be adjusted based on size preset
     
     def record(self, segment: Segment, output: Path, timed_narrations: dict = None) -> dict[int, tuple[float, float]]:
         """Record a terminal segment to video with full PTY support.
@@ -166,22 +166,14 @@ class TerminalRecorder:
             if "PROMPT" in key and key != "PROMPT_COMMAND":
                 del env[key]
         
-        # Start ttyd with xterm.js configuration via client options
+        # Start ttyd - we'll configure xterm.js via JavaScript after load
         ttyd_cmd = [
             "ttyd",
             "--port", str(port),
             "--writable",  # Allow input
             "--once",  # Exit after one connection
-            "-t", f"fontSize={self.font_size}",
-            "-t", f"lineHeight={self.line_height}",
-            "-t", f"fontFamily={self.font_family}",
+            "/bin/bash", "--norc", "--noprofile"
         ]
-        
-        # Add rows/cols if specified (this sets initial terminal size)
-        if self.desired_rows:
-            ttyd_cmd.extend(["-t", f"rows={self.desired_rows}"])
-        
-        ttyd_cmd.extend(["/bin/bash", "--norc", "--noprofile"])
         
         self._ttyd_process = subprocess.Popen(
             ttyd_cmd,
@@ -211,10 +203,8 @@ class TerminalRecorder:
                 await page.wait_for_selector(".xterm-screen", timeout=10000)
                 await asyncio.sleep(0.5)  # Let terminal initialize
                 
-                # Make terminal container fill viewport and trigger resize
-                # Font/rows are already configured via ttyd's -t options
-                term_size = await page.evaluate("""() => {
-                    // Make terminal container fill viewport
+                # Make terminal container fill viewport
+                await page.evaluate("""() => {
                     const container = document.querySelector('#terminal-container') || 
                                       document.querySelector('.xterm');
                     if (container) {
@@ -226,32 +216,76 @@ class TerminalRecorder:
                         container.style.padding = '0';
                         container.style.margin = '0';
                     }
-                    
-                    // Trigger resize to fit terminal to viewport
                     window.dispatchEvent(new Event('resize'));
-                    
-                    // Get terminal dimensions
-                    if (window.term) {
-                        return { rows: window.term.rows, cols: window.term.cols };
-                    }
-                    return null;
                 }""")
                 await asyncio.sleep(0.5)
                 
-                # Determine PTY size to set via stty
+                # Option 2: Query xterm.js for actual row count, then calculate font size
+                term_size = await page.evaluate("""(desiredRows) => {
+                    if (!window.term) return null;
+                    
+                    const actualRows = window.term.rows;
+                    const actualCols = window.term.cols;
+                    const currentFontSize = window.term.options.fontSize || 14;
+                    
+                    let finalRows = actualRows;
+                    let finalCols = actualCols;
+                    
+                    if (desiredRows && desiredRows !== actualRows) {
+                        // Calculate required font size from xterm's own math
+                        // If we want fewer rows, we need larger font
+                        const newFontSize = Math.round(currentFontSize * (actualRows / desiredRows));
+                        
+                        // Apply new font size
+                        window.term.options.fontSize = newFontSize;
+                        
+                        // Trigger re-render and resize
+                        window.dispatchEvent(new Event('resize'));
+                        
+                        // Get new dimensions after font change
+                        finalRows = window.term.rows;
+                        finalCols = window.term.cols;
+                    }
+                    
+                    return { 
+                        rows: finalRows, 
+                        cols: finalCols, 
+                        actualRows: actualRows,
+                        fontSize: window.term.options.fontSize 
+                    };
+                }""", self.desired_rows)
+                await asyncio.sleep(0.5)
+                
+                # If rows still don't match after font change, do a second pass
+                if self.desired_rows and term_size and term_size['rows'] != self.desired_rows:
+                    term_size = await page.evaluate("""(desiredRows) => {
+                        if (!window.term) return null;
+                        
+                        const currentRows = window.term.rows;
+                        const currentFontSize = window.term.options.fontSize || 14;
+                        
+                        // Fine-tune: adjust font based on current mismatch
+                        const newFontSize = Math.round(currentFontSize * (currentRows / desiredRows));
+                        window.term.options.fontSize = newFontSize;
+                        window.dispatchEvent(new Event('resize'));
+                        
+                        return { 
+                            rows: window.term.rows, 
+                            cols: window.term.cols,
+                            fontSize: newFontSize
+                        };
+                    }""", self.desired_rows)
+                    await asyncio.sleep(0.3)
+                
+                # Get final dimensions
                 if term_size:
                     expected_rows = term_size['rows']
                     expected_cols = term_size['cols']
                 else:
-                    # Fallback calculation
-                    expected_rows = max(24, int(self.height / (self.font_size * 1.6)))
-                    expected_cols = max(80, int(self.width / (self.font_size * 0.6)))
+                    expected_rows = self.desired_rows or 24
+                    expected_cols = 80
                 
-                # If user specified desired_rows, override
-                if self.desired_rows:
-                    expected_rows = self.desired_rows
-                
-                # Sync PTY size with terminal dimensions
+                # Sync PTY size with xterm dimensions
                 stty_cmd = f"stty rows {expected_rows} cols {expected_cols}"
                 await self._execute_command(page, Command(name="Type", args=[stty_cmd]))
                 await self._execute_command(page, Command(name="Enter", args=[]))

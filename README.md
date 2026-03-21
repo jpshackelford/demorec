@@ -103,6 +103,108 @@ demorec voices
 demorec --version
 ```
 
+## Agent Workflow Tools
+
+demorec includes commands designed for AI agents creating vim-based code review demos.
+
+### Stage Directions
+
+Calculate optimal vim commands to display specific line ranges:
+
+```bash
+# Get vim commands for highlighting specific line ranges
+demorec stage --rows 30 --highlights "6-8,11-16,27-35,63-73"
+
+# Output formats: text (default), json, demorec
+demorec stage --rows 30 --highlights "6-8,27-35" --format json
+demorec stage --rows 30 --highlights "6-8,27-35" --format demorec
+```
+
+Example output:
+```
+Stage Directions (30 rows)
+
+Block 1: lines 6-8 (3 lines)
+  Goto:      6G
+  Center:    zz
+  Select:    V8G
+  Rationale: Block fits in viewport, using zz to center
+
+Block 2: lines 27-35 (9 lines)  
+  Goto:      31G
+  Center:    zz
+  Select:    V27G then 35G
+  Rationale: Block fits in viewport, centering on middle line
+```
+
+### Preview
+
+Run through a script and verify checkpoints without recording video:
+
+```bash
+# Preview with verification (screenshots only on errors)
+demorec preview script.demorec --rows 30
+
+# Always capture screenshots at checkpoints
+demorec preview script.demorec --rows 30 --screenshots
+
+# Never capture screenshots (fastest)
+demorec preview script.demorec --rows 30 --no-screenshots
+```
+
+Preview auto-detects "show moments" (visual selections in vim) and verifies that expected lines are visible:
+
+```
+[PASS] Checkpoint 1 (line 11): lines 6-8 visible
+[PASS] Checkpoint 2 (line 33): lines 27-35 visible
+Summary: 2/2 passed
+```
+
+### Checkpoints
+
+Analyze a script to find natural checkpoint locations:
+
+```bash
+# List detected checkpoints
+demorec checkpoints script.demorec
+
+# JSON output for programmatic use
+demorec checkpoints script.demorec --format json
+```
+
+### Terminal Rows Directive
+
+Set a specific number of terminal rows for consistent viewport sizing:
+
+```tape
+@terminal:rows 30
+
+@mode terminal
+Set Theme "Dracula"
+Type "vim myfile.py"
+Enter
+```
+
+### Complete Agent Workflow
+
+```bash
+# 1. View file with line numbers
+cat -n examples/sample_code.py
+
+# 2. Get stage directions for highlights
+demorec stage --rows 30 --highlights "6-8,11-16,27-35"
+
+# 3. Write the .demorec script using generated vim commands
+
+# 4. Preview to verify checkpoints
+demorec preview script.demorec --rows 30
+
+# 5. If issues, adjust script and re-preview
+
+# 6. Record final video
+demorec record script.demorec
+```
+
 ## DSL Reference
 
 ### Global Settings

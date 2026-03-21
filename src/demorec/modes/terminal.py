@@ -59,9 +59,18 @@ class TerminalSession:
                 "  chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/ttyd"
             )
         
+        # Build clean environment for terminal recording
+        # Critical: Remove OpenHands PS1JSON artifacts by clearing PROMPT_COMMAND
+        # and removing any prompt-related variables that might interfere
         env = os.environ.copy()
         env["TERM"] = "xterm-256color"
-        env["PS1"] = "$ "
+        env["PS1"] = "$ "  # Simple prompt
+        env["PROMPT_COMMAND"] = ""  # Clear PROMPT_COMMAND that sets PS1JSON
+        
+        # Remove any other prompt-related variables that might interfere
+        for key in list(env.keys()):
+            if "PROMPT" in key and key != "PROMPT_COMMAND":
+                del env[key]
         
         # Start ttyd WITHOUT --once so it persists across reconnections
         self._process = subprocess.Popen(

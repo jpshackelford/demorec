@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 from ..parser import Segment, Command, parse_time
+from .vim import VimCommandExpander
 
 
 def _find_free_port() -> int:
@@ -117,6 +118,11 @@ class TerminalRecorder:
         else:
             self.desired_rows = self.SIZE_PRESETS.get(size) if size else None
         self.font_size = 14  # Default font size, will be adjusted based on desired rows
+        
+        # Vim command expander for high-level primitives
+        self._vim_expander = VimCommandExpander(
+            terminal_rows=self.desired_rows or 24
+        )
     
     def record(self, segment: Segment, output: Path, timed_narrations: dict = None) -> dict[int, tuple[float, float]]:
         """Record a terminal segment to video with full PTY support.
@@ -316,6 +322,10 @@ class TerminalRecorder:
                 await page.keyboard.press("Control+l")
                 await asyncio.sleep(0.3)
                 
+                # Update vim expander with actual terminal rows
+                if term_size and term_size.get('rows'):
+                    self._vim_expander.set_terminal_rows(term_size['rows'])
+                
                 # Mark recording start time
                 recording_start = time.time()
                 
@@ -377,6 +387,12 @@ class TerminalRecorder:
     
     async def _execute_command(self, page, cmd: Command):
         """Execute a command in the real PTY."""
+        # Check for high-level vim commands first
+        if self._vim_expander.is_vim_command(cmd.name):
+            expanded = self._vim_expander.expand_command(cmd.name, cmd.args)
+            await self._execute_vim_sequence(page, expanded)
+            return
+        
         if cmd.name == "SetTheme":
             pass  # Processed earlier (ttyd has its own theming)
         
@@ -450,6 +466,28 @@ class TerminalRecorder:
         elif cmd.name == "Clear":
             await page.keyboard.press("Control+l")
             await asyncio.sleep(0.1)
+
+    async def _execute_vim_sequence(self, page, commands: list[tuple[str, float]]):
+        """Execute a sequence of vim keystrokes.
+        
+        Args:
+            page: Playwright page
+            commands: List of (keys, delay_after) tuples
+                     Special keys: "ENTER", "ESCAPE", "TAB"
+        """
+        for keys, delay in commands:
+            if keys == "ENTER":
+                await page.keyboard.press("Enter")
+            elif keys == "ESCAPE":
+                await page.keyboard.press("Escape")
+            elif keys == "TAB":
+                await page.keyboard.press("Tab")
+            else:
+                # Regular text - type it character by character for visibility
+                await self._send_keys(page, keys, delay=0.02)
+            
+            if delay > 0:
+                await asyncio.sleep(delay)
     
     def _convert_to_mp4(self, webm_path: Path, mp4_path: Path):
         """Convert webm to mp4 using FFmpeg."""

@@ -1,0 +1,45 @@
+# vim_primitives_demo.demorec - Demo using high-level vim primitives
+# Compare this to vim_code_review.demorec which uses raw vim commands
+Output vim_primitives_demo.mp4
+Set Width 1280
+Set Height 720
+
+# @voice eleven:rachel
+
+@mode terminal
+@terminal:rows 30
+Set Theme "Dracula"
+
+# Using high-level primitives - the tool handles vim installation,
+# line numbers, scrolling, centering, and visual selection automatically
+
+# @narrate:before "Let's review this Python API client code."
+Open "examples/sample_code.py"
+Sleep 1s
+
+# Highlight the imports (lines 6-8)
+# @narrate:after "First, notice the imports. We're using dataclasses and typing for clean, type-safe code."
+Highlight "6-8"
+Sleep 2s
+
+# Highlight the User dataclass (lines 11-16)
+# @narrate:after "Here's our User dataclass. It defines the structure with an ID, name, email, and an active flag."
+Highlight "11-16"
+Sleep 2s
+
+# Highlight the API methods (lines 27-35)
+# @narrate:before "Now let's look at the API methods."
+# @narrate:after "The get_users method makes an authenticated GET request and converts the JSON response into User objects."
+Highlight "27-35"
+Sleep 2s
+
+# Highlight the main function (lines 62-72)
+# @narrate:before "Finally, let's see how this client is used."
+# @narrate:after "The main function creates a client instance and fetches all users. Simple and clean!"
+Highlight "62-72"
+Sleep 2s
+
+# Exit vim
+# @narrate:after "That's a quick tour of the code structure."
+Close
+Sleep 1s

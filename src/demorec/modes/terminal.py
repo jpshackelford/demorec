@@ -97,7 +97,8 @@ class TerminalRecorder:
         "tiny": 50,    # Maximum content, smaller text
     }
     
-    def __init__(self, width: int = 1280, height: int = 720, framerate: int = 30, size: str | None = None):
+    def __init__(self, width: int = 1280, height: int = 720, framerate: int = 30, 
+                 size: str | None = None, rows: int | None = None):
         self.width = width
         self.height = height
         self.framerate = framerate
@@ -108,10 +109,14 @@ class TerminalRecorder:
         self.typing_speed = 0.05  # seconds per character
         self._ttyd_process = None
         
-        # Convert size preset to target rows
+        # Convert size preset to target rows, or use explicit row count
         self.size = size
-        self.desired_rows = self.SIZE_PRESETS.get(size) if size else None
-        self.font_size = 14  # Default font size, will be adjusted based on size preset
+        # Explicit rows override size preset
+        if rows is not None:
+            self.desired_rows = rows
+        else:
+            self.desired_rows = self.SIZE_PRESETS.get(size) if size else None
+        self.font_size = 14  # Default font size, will be adjusted based on desired rows
     
     def record(self, segment: Segment, output: Path, timed_narrations: dict = None) -> dict[int, tuple[float, float]]:
         """Record a terminal segment to video with full PTY support.

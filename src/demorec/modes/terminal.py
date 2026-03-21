@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import signal
 import socket
+import time
 import os
 from pathlib import Path
 
@@ -155,6 +156,10 @@ class TerminalRecorder:
         # Track command timestamps
         timestamps: dict[int, tuple[float, float]] = {}
         
+        # Track when video recording starts vs when setup completes
+        video_start_time = None
+        setup_duration = 0.0
+        
         # Process SetTheme commands first
         for cmd in segment.commands:
             if cmd.name == "SetTheme" and cmd.args:
@@ -208,6 +213,9 @@ class TerminalRecorder:
                 )
                 page = await context.new_page()
                 
+                # Video recording starts now
+                video_start_time = time.time()
+                
                 # Navigate to ttyd
                 await page.goto(f"http://localhost:{port}", wait_until="networkidle")
                 
@@ -244,13 +252,19 @@ class TerminalRecorder:
                         if term_size and term_size.get('done'):
                             break
                 
+                # Wait for terminal to report stable dimensions before proceeding
+                await self._wait_for_terminal_ready(page, term_size)
+                
                 # Clear terminal for clean start (PTY is already synced via term.fit())
                 await page.keyboard.press("Control+l")
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.5)  # Wait for clear to render
                 
                 # Update vim expander with actual terminal rows
                 if term_size and term_size.get('rows'):
                     self._vim_expander.set_terminal_rows(term_size['rows'])
+                
+                # Setup is complete - mark this time for video trimming
+                setup_duration = time.time() - video_start_time
                 
                 # Store page for command execution
                 self._page = page
@@ -276,11 +290,11 @@ class TerminalRecorder:
                 except subprocess.TimeoutExpired:
                     self._ttyd_process.kill()
         
-        # Convert video
+        # Convert video, trimming the setup portion
         video_files = list(output.parent.glob("*.webm"))
         if video_files:
             latest = max(video_files, key=lambda f: f.stat().st_mtime)
-            self._convert_to_mp4(latest, output)
+            self._convert_to_mp4(latest, output, trim_start=setup_duration)
             latest.unlink()
         
         return timestamps
@@ -380,6 +394,67 @@ class TerminalRecorder:
             await page.keyboard.press("Control+l")
             await asyncio.sleep(0.1)
 
+    async def _wait_for_terminal_ready(self, page, expected_size: dict | None,
+                                       stable_checks: int = 3, check_interval: float = 0.3,
+                                       max_wait: float = 5.0):
+        """Wait for terminal to report stable dimensions before recording.
+        
+        The terminal is considered "ready" when:
+        1. It reports consistent rows/cols for several consecutive checks
+        2. If expected_size is provided, dimensions match the expected values
+        
+        Args:
+            page: Playwright page object
+            expected_size: Expected {rows, cols} dict (optional)
+            stable_checks: Number of consecutive matching checks required
+            check_interval: Seconds between checks
+            max_wait: Maximum seconds to wait before proceeding anyway
+        """
+        start_time = time.time()
+        consecutive_matches = 0
+        last_size = None
+        expected_rows = expected_size.get('rows') if expected_size else None
+        expected_cols = expected_size.get('cols') if expected_size else None
+        
+        while time.time() - start_time < max_wait:
+            # Query terminal size via xterm.js API
+            current_size = await page.evaluate("""() => {
+                if (!window.term) return null;
+                return {
+                    rows: window.term.rows,
+                    cols: window.term.cols,
+                    bufferReady: window.term.buffer && window.term.buffer.active !== undefined
+                };
+            }""")
+            
+            if not current_size:
+                await asyncio.sleep(check_interval)
+                continue
+            
+            # Check if size matches expected (if specified)
+            size_matches_expected = True
+            if expected_rows and current_size['rows'] != expected_rows:
+                size_matches_expected = False
+            if expected_cols and current_size['cols'] != expected_cols:
+                size_matches_expected = False
+            
+            # Check if size is stable (matches last check)
+            size_is_stable = (
+                last_size is not None and
+                current_size['rows'] == last_size['rows'] and
+                current_size['cols'] == last_size['cols']
+            )
+            
+            if size_is_stable and size_matches_expected:
+                consecutive_matches += 1
+                if consecutive_matches >= stable_checks:
+                    return  # Terminal is ready!
+            else:
+                consecutive_matches = 0
+            
+            last_size = current_size
+            await asyncio.sleep(check_interval)
+
     async def _execute_vim_sequence(self, commands: list[tuple[str, float]]):
         """Execute a sequence of vim keystrokes.
         
@@ -402,17 +477,28 @@ class TerminalRecorder:
             if delay > 0:
                 await asyncio.sleep(delay)
     
-    def _convert_to_mp4(self, webm_path: Path, mp4_path: Path):
-        """Convert webm to mp4 using FFmpeg."""
-        cmd = [
-            "ffmpeg", "-y",
+    def _convert_to_mp4(self, webm_path: Path, mp4_path: Path, trim_start: float = 0):
+        """Convert webm to mp4 using FFmpeg, optionally trimming the start.
+        
+        Args:
+            webm_path: Input webm file
+            mp4_path: Output mp4 file
+            trim_start: Seconds to trim from the beginning (for removing setup/resize frames)
+        """
+        cmd = ["ffmpeg", "-y"]
+        
+        # Add seek option to trim beginning (before input for fast seek)
+        if trim_start > 0:
+            cmd.extend(["-ss", f"{trim_start:.2f}"])
+        
+        cmd.extend([
             "-i", str(webm_path),
             "-c:v", "libx264",
             "-preset", "fast",
             "-crf", "22",
             "-pix_fmt", "yuv420p",
             str(mp4_path)
-        ]
+        ])
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"FFmpeg conversion failed: {result.stderr}")

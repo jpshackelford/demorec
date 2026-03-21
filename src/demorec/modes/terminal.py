@@ -199,12 +199,22 @@ class TerminalRecorder:
                 # Navigate to ttyd
                 await page.goto(f"http://localhost:{port}", wait_until="networkidle")
                 
-                # Wait for terminal to be ready (ttyd creates #terminal-container with xterm)
+                # Wait for terminal to be ready (ttyd creates window.term)
                 await page.wait_for_selector(".xterm-screen", timeout=10000)
-                await asyncio.sleep(0.5)  # Let terminal initialize
+                await page.wait_for_function("() => window.term !== undefined", timeout=10000)
+                await asyncio.sleep(0.3)  # Let terminal fully initialize
                 
-                # Make terminal container fill viewport
-                await page.evaluate("""() => {
+                # VHS-style terminal setup:
+                # 1. Make container fill viewport
+                # 2. Apply font/theme settings
+                # 3. Call term.fit() which:
+                #    - Calculates proper rows/cols for viewport
+                #    - Triggers onResize event
+                #    - Automatically syncs PTY via ttyd's WebSocket protocol
+                term_size = await page.evaluate("""(config) => {
+                    if (!window.term) return null;
+                    
+                    // Step 1: Make container fill viewport
                     const container = document.querySelector('#terminal-container') || 
                                       document.querySelector('.xterm');
                     if (container) {
@@ -216,82 +226,89 @@ class TerminalRecorder:
                         container.style.padding = '0';
                         container.style.margin = '0';
                     }
-                    window.dispatchEvent(new Event('resize'));
-                }""")
-                await asyncio.sleep(0.5)
-                
-                # Option 2: Query xterm.js for actual row count, then calculate font size
-                term_size = await page.evaluate("""(desiredRows) => {
-                    if (!window.term) return null;
                     
-                    const actualRows = window.term.rows;
-                    const actualCols = window.term.cols;
-                    const currentFontSize = window.term.options.fontSize || 14;
+                    // Step 2: Apply terminal options (like VHS does)
+                    const term = window.term;
+                    term.options.fontFamily = config.fontFamily;
+                    term.options.lineHeight = config.lineHeight;
+                    term.options.cursorBlink = false;
                     
-                    let finalRows = actualRows;
-                    let finalCols = actualCols;
+                    // Apply theme if available
+                    if (config.theme) {
+                        term.options.theme = config.theme;
+                    }
                     
-                    if (desiredRows && desiredRows !== actualRows) {
-                        // Calculate required font size from xterm's own math
+                    // Step 3: Initial fit to get baseline rows
+                    term.fit();
+                    
+                    let baselineRows = term.rows;
+                    let finalFontSize = config.fontSize;
+                    
+                    // Step 4: If desired rows specified, calculate font size
+                    if (config.desiredRows && config.desiredRows !== baselineRows) {
+                        // VHS approach: font size scales inversely with row count
                         // If we want fewer rows, we need larger font
-                        const newFontSize = Math.round(currentFontSize * (actualRows / desiredRows));
+                        finalFontSize = Math.round(config.fontSize * (baselineRows / config.desiredRows));
+                        term.options.fontSize = finalFontSize;
                         
-                        // Apply new font size
-                        window.term.options.fontSize = newFontSize;
-                        
-                        // Trigger re-render and resize
-                        window.dispatchEvent(new Event('resize'));
-                        
-                        // Get new dimensions after font change
-                        finalRows = window.term.rows;
-                        finalCols = window.term.cols;
+                        // Re-fit with new font size - this triggers onResize
+                        // which sends RESIZE_TERMINAL to ttyd, syncing the PTY
+                        term.fit();
+                    } else {
+                        term.options.fontSize = finalFontSize;
+                        term.fit();
                     }
                     
                     return { 
-                        rows: finalRows, 
-                        cols: finalCols, 
-                        actualRows: actualRows,
-                        fontSize: window.term.options.fontSize 
+                        rows: term.rows, 
+                        cols: term.cols,
+                        fontSize: term.options.fontSize,
+                        baselineRows: baselineRows
                     };
-                }""", self.desired_rows)
-                await asyncio.sleep(0.5)
-                
-                # If rows still don't match after font change, do a second pass
-                if self.desired_rows and term_size and term_size['rows'] != self.desired_rows:
-                    term_size = await page.evaluate("""(desiredRows) => {
-                        if (!window.term) return null;
-                        
-                        const currentRows = window.term.rows;
-                        const currentFontSize = window.term.options.fontSize || 14;
-                        
-                        // Fine-tune: adjust font based on current mismatch
-                        const newFontSize = Math.round(currentFontSize * (currentRows / desiredRows));
-                        window.term.options.fontSize = newFontSize;
-                        window.dispatchEvent(new Event('resize'));
-                        
-                        return { 
-                            rows: window.term.rows, 
-                            cols: window.term.cols,
-                            fontSize: newFontSize
-                        };
-                    }""", self.desired_rows)
-                    await asyncio.sleep(0.3)
-                
-                # Get final dimensions
-                if term_size:
-                    expected_rows = term_size['rows']
-                    expected_cols = term_size['cols']
-                else:
-                    expected_rows = self.desired_rows or 24
-                    expected_cols = 80
-                
-                # Sync PTY size with xterm dimensions
-                stty_cmd = f"stty rows {expected_rows} cols {expected_cols}"
-                await self._execute_command(page, Command(name="Type", args=[stty_cmd]))
-                await self._execute_command(page, Command(name="Enter", args=[]))
+                }""", {
+                    "fontSize": self.font_size,
+                    "fontFamily": self.font_family,
+                    "lineHeight": self.line_height,
+                    "theme": THEMES.get(self.theme),
+                    "desiredRows": self.desired_rows
+                })
                 await asyncio.sleep(0.3)
-                await self._execute_command(page, Command(name="Type", args=["clear"]))
-                await self._execute_command(page, Command(name="Enter", args=[]))
+                
+                # If rows still don't match, do iterative refinement
+                if self.desired_rows and term_size and term_size['rows'] != self.desired_rows:
+                    for _ in range(3):  # Max 3 iterations
+                        term_size = await page.evaluate("""(desiredRows) => {
+                            if (!window.term) return null;
+                            
+                            const term = window.term;
+                            const currentRows = term.rows;
+                            const currentFontSize = term.options.fontSize || 14;
+                            
+                            if (currentRows === desiredRows) {
+                                return { rows: currentRows, cols: term.cols, fontSize: currentFontSize, done: true };
+                            }
+                            
+                            // Fine-tune font size based on mismatch
+                            const newFontSize = Math.round(currentFontSize * (currentRows / desiredRows));
+                            term.options.fontSize = newFontSize;
+                            
+                            // term.fit() handles both xterm resize AND PTY sync
+                            term.fit();
+                            
+                            return { 
+                                rows: term.rows, 
+                                cols: term.cols,
+                                fontSize: newFontSize,
+                                done: term.rows === desiredRows
+                            };
+                        }""", self.desired_rows)
+                        await asyncio.sleep(0.2)
+                        
+                        if term_size and term_size.get('done'):
+                            break
+                
+                # Clear terminal for clean start (PTY is already synced via term.fit())
+                await page.keyboard.press("Control+l")
                 await asyncio.sleep(0.3)
                 
                 # Mark recording start time

@@ -306,6 +306,44 @@ jpshackelford/demorec/
    ffmpeg -i video.mp4 -ss 30 -vframes 1 frame_30s.png
    ```
 
+8. **Terminal Size/Row Control - What Works and What Doesn't:**
+
+   **The Problem:** Users want to control how many rows are visible in terminal recordings (e.g., 24 rows for classic look, 50 for more content).
+
+   **What We Tried:**
+
+   | Approach | Result | Why |
+   |----------|--------|-----|
+   | Calculate font size with fixed formula | Failed | xterm.js line height depends on actual font metrics, not just fontSize |
+   | ttyd `-t rows=N` option | Failed | Sets xterm.js buffer size, not visible rows |
+   | `term.resize(cols, rows)` API alone | Partial | Correctly limits rows but leaves empty viewport space |
+   | CSS `transform: scale()` | Failed | Scales pixels, causes fuzzy/blurry text |
+   | Query xterm.js then set font | Works | Let xterm.js tell us actual row count, then calculate font size |
+
+   **The Solution:** Use the "Option 2" approach:
+   ```javascript
+   // After xterm.js initializes with default font
+   const actualRows = window.term.rows;  // e.g., 48
+   const currentFontSize = window.term.options.fontSize;  // e.g., 14
+   const desiredRows = 24;
+   
+   // Calculate new font size from xterm's own math
+   const newFontSize = Math.round(currentFontSize * (actualRows / desiredRows));
+   window.term.options.fontSize = newFontSize;  // e.g., 28
+   ```
+
+   **Key Insight:** Don't try to predict xterm.js behavior - query it after initialization and adjust based on what it actually calculated.
+
+   **UX Decision:** Instead of exposing raw row counts (which cannot be perfectly achieved), use named presets:
+   ```
+   @terminal:size large   # ~24 rows, classic terminal
+   @terminal:size medium  # ~36 rows, balanced
+   @terminal:size small   # ~44 rows, default density
+   @terminal:size tiny    # ~50 rows, maximum content
+   ```
+
+9. **Playwright device_scale_factor:** When recording at 1280x720, use `device_scale_factor=1` (not 2). A scale factor of 2 causes xterm.js to render at 2x resolution, making characters appear half-sized and doubling the apparent row count. This was a major source of terminal size mismatch bugs.
+
 ---
 
 ## Part 5: Next Steps for `demorec`

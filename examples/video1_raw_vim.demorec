@@ -1,0 +1,86 @@
+# video1_raw_vim.demorec - Code review using raw vim commands
+Output video1_raw_vim.mp4
+Set Width 1280
+Set Height 720
+
+# @voice edge:jenny
+
+@mode terminal
+@terminal:rows 30
+Set Theme "Dracula"
+
+# Open the file in vim
+Type "vim examples/sample_code.py"
+Enter
+Sleep 1s
+
+# Enable line numbers
+Type ":set number"
+Enter
+Sleep 0.5s
+# @narrate:after "Let's review this Python API client code."
+Sleep 1s
+
+# Highlight imports (lines 4-7)
+# Go to line 4, center it, select down to line 7
+Type "4G"
+Sleep 0.2s
+Type "zz"
+Sleep 0.3s
+Type "V"
+Sleep 0.2s
+Type "7G"
+Sleep 0.5s
+# @narrate:after "First, notice the imports. We're using dataclasses and typing for clean, type-safe code."
+Sleep 1s
+
+# Clear selection and highlight User dataclass (lines 10-16)
+Escape
+Sleep 0.3s
+Type "10G"
+Sleep 0.2s
+Type "zz"
+Sleep 0.3s
+Type "V"
+Sleep 0.2s
+Type "16G"
+Sleep 0.5s
+# @narrate:after "Here's our User dataclass defining the structure with ID, name, email, and an active flag."
+Sleep 1s
+
+# Clear selection and highlight get_users (lines 26-34)
+Escape
+Sleep 0.3s
+Type "26G"
+Sleep 0.2s
+Type "zz"
+Sleep 0.3s
+Type "V"
+Sleep 0.2s
+Type "34G"
+Sleep 0.5s
+# @narrate:after "The get_users method makes an authenticated GET request and converts the JSON response into User objects."
+Sleep 1s
+
+# Clear selection and highlight main function (lines 63-73)
+Escape
+Sleep 0.3s
+Type "63G"
+Sleep 0.2s
+Type "zz"
+Sleep 0.3s
+Type "V"
+Sleep 0.2s
+Type "73G"
+Sleep 0.5s
+# @narrate:after "Finally, the main function creates a client and fetches all users. Simple and clean!"
+Sleep 1s
+
+# Exit vim
+Escape
+Sleep 0.3s
+Type ":q!"
+Enter
+Sleep 0.5s
+# @narrate:after "That's a quick tour of the code structure."
+Sleep 1s

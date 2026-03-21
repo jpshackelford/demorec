@@ -11,6 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from .parser import Plan, Segment, Narration
 from .modes.terminal import TerminalRecorder
 from .modes.browser import BrowserRecorder
+from .modes import vim as vim_module
 from .tts import get_tts_engine, get_audio_duration
 
 console = Console()
@@ -39,6 +40,28 @@ class Runner:
             seg.narrations for seg in plan.segments
         )
     
+    def _uses_vim_primitives(self) -> bool:
+        """Check if any segment uses high-level vim primitives."""
+        vim_commands = {"Open", "Highlight", "Close", "Goto"}
+        for segment in self.plan.segments:
+            for cmd in segment.commands:
+                if cmd.name in vim_commands:
+                    return True
+        return False
+    
+    def _run_preflight_checks(self) -> list[str]:
+        """Run preflight checks before recording.
+        
+        Returns list of error messages (empty if all checks pass).
+        """
+        errors = []
+        
+        # Check vim if needed
+        if self._uses_vim_primitives():
+            errors.extend(vim_module.preflight_check())
+        
+        return errors
+    
     def run(self):
         """Execute the full recording pipeline."""
         with Progress(
@@ -46,6 +69,16 @@ class Runner:
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
+            # Run preflight checks before anything else
+            task = progress.add_task("Running preflight checks...", total=None)
+            errors = self._run_preflight_checks()
+            if errors:
+                progress.update(task, completed=True)
+                for error in errors:
+                    console.print(f"[red]Preflight error:[/red] {error}")
+                raise RuntimeError("Preflight checks failed")
+            progress.update(task, completed=True)
+            
             # Generate narration audio if needed
             if self.has_narration and self.plan.voice:
                 task = progress.add_task("Generating narration audio...", total=None)

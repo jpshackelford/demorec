@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 from ..parser import Segment, Command, parse_time
+from .vim import VimCommandExpander
 
 
 def _find_free_port() -> int:
@@ -117,6 +118,11 @@ class TerminalRecorder:
         else:
             self.desired_rows = self.SIZE_PRESETS.get(size) if size else None
         self.font_size = 14  # Default font size, will be adjusted based on desired rows
+        
+        # Vim command expander for high-level primitives
+        self._vim_expander = VimCommandExpander(
+            terminal_rows=self.desired_rows or 24
+        )
     
     def record(self, segment: Segment, output: Path, timed_narrations: dict = None) -> dict[int, tuple[float, float]]:
         """Record a terminal segment to video with full PTY support.
@@ -319,9 +325,16 @@ class TerminalRecorder:
                         if term_size and term_size.get('done'):
                             break
                 
+                # Wait for terminal to report stable dimensions before proceeding
+                await self._wait_for_terminal_ready(page, term_size)
+                
                 # Clear terminal for clean start (PTY is already synced via term.fit())
                 await page.keyboard.press("Control+l")
                 await asyncio.sleep(0.5)  # Wait for clear to render
+                
+                # Update vim expander with actual terminal rows
+                if term_size and term_size.get('rows'):
+                    self._vim_expander.set_terminal_rows(term_size['rows'])
                 
                 # Setup is complete - mark this time for video trimming
                 setup_complete_time = time.time()
@@ -388,6 +401,12 @@ class TerminalRecorder:
     
     async def _execute_command(self, page, cmd: Command):
         """Execute a command in the real PTY."""
+        # Check for high-level vim commands first
+        if self._vim_expander.is_vim_command(cmd.name):
+            expanded = self._vim_expander.expand_command(cmd.name, cmd.args)
+            await self._execute_vim_sequence(page, expanded)
+            return
+        
         if cmd.name == "SetTheme":
             pass  # Processed earlier (ttyd has its own theming)
         
@@ -461,6 +480,89 @@ class TerminalRecorder:
         elif cmd.name == "Clear":
             await page.keyboard.press("Control+l")
             await asyncio.sleep(0.1)
+
+    async def _wait_for_terminal_ready(self, page, expected_size: dict | None, 
+                                         stable_checks: int = 3, check_interval: float = 0.3,
+                                         max_wait: float = 5.0):
+        """Wait for terminal to report stable dimensions before recording.
+        
+        The terminal is considered "ready" when:
+        1. It reports consistent rows/cols for several consecutive checks
+        2. If expected_size is provided, dimensions match the expected values
+        
+        Args:
+            page: Playwright page object
+            expected_size: Expected {rows, cols} dict (optional)
+            stable_checks: Number of consecutive matching checks required
+            check_interval: Seconds between checks
+            max_wait: Maximum seconds to wait before proceeding anyway
+        """
+        start_time = time.time()
+        consecutive_matches = 0
+        last_size = None
+        expected_rows = expected_size.get('rows') if expected_size else None
+        expected_cols = expected_size.get('cols') if expected_size else None
+        
+        while time.time() - start_time < max_wait:
+            # Query terminal size via xterm.js API
+            current_size = await page.evaluate("""() => {
+                if (!window.term) return null;
+                return {
+                    rows: window.term.rows,
+                    cols: window.term.cols,
+                    bufferReady: window.term.buffer && window.term.buffer.active !== undefined
+                };
+            }""")
+            
+            if not current_size:
+                await asyncio.sleep(check_interval)
+                continue
+            
+            # Check if size matches expected (if specified)
+            size_matches_expected = True
+            if expected_rows and current_size['rows'] != expected_rows:
+                size_matches_expected = False
+            if expected_cols and current_size['cols'] != expected_cols:
+                size_matches_expected = False
+            
+            # Check if size is stable (matches last check)
+            size_is_stable = (
+                last_size is not None and
+                current_size['rows'] == last_size['rows'] and
+                current_size['cols'] == last_size['cols']
+            )
+            
+            if size_is_stable and size_matches_expected:
+                consecutive_matches += 1
+                if consecutive_matches >= stable_checks:
+                    return  # Terminal is ready!
+            else:
+                consecutive_matches = 0
+            
+            last_size = current_size
+            await asyncio.sleep(check_interval)
+
+    async def _execute_vim_sequence(self, page, commands: list[tuple[str, float]]):
+        """Execute a sequence of vim keystrokes.
+        
+        Args:
+            page: Playwright page
+            commands: List of (keys, delay_after) tuples
+                     Special keys: "ENTER", "ESCAPE", "TAB"
+        """
+        for keys, delay in commands:
+            if keys == "ENTER":
+                await page.keyboard.press("Enter")
+            elif keys == "ESCAPE":
+                await page.keyboard.press("Escape")
+            elif keys == "TAB":
+                await page.keyboard.press("Tab")
+            else:
+                # Regular text - type it character by character for visibility
+                await self._send_keys(page, keys, delay=0.02)
+            
+            if delay > 0:
+                await asyncio.sleep(delay)
     
     def _convert_to_mp4(self, webm_path: Path, mp4_path: Path, trim_start: float = 0):
         """Convert webm to mp4 using FFmpeg, optionally trimming the start.

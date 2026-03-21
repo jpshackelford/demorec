@@ -1,0 +1,22 @@
+# browser_type.demorec - Test Type command
+Output browser_type.mp4
+Set Width 1280
+Set Height 720
+
+@mode browser
+
+# Navigate to DuckDuckGo
+Navigate "https://duckduckgo.com"
+Sleep 2s
+
+# Wait for input
+Wait "input[name='q']"
+Sleep 1s
+
+# Test Click on input first to focus it
+Click "input[name='q']"
+Sleep 0.5s
+
+# Test Type - slower character-by-character typing (without selector)
+Type "hello world"
+Sleep 2s

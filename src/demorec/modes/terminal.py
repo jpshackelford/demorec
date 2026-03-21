@@ -148,6 +148,10 @@ class TerminalRecorder:
         # Track command timestamps
         timestamps: dict[int, tuple[float, float]] = {}
         
+        # Track when video recording starts vs when setup completes
+        video_start_time = None
+        setup_complete_time = None
+        
         # Process SetTheme commands first
         for cmd in segment.commands:
             if cmd.name == "SetTheme" and cmd.args:
@@ -200,6 +204,9 @@ class TerminalRecorder:
                     record_video_size={"width": self.width, "height": self.height},
                 )
                 page = await context.new_page()
+                
+                # Video recording starts now
+                video_start_time = time.time()
                 
                 # Navigate to ttyd
                 await page.goto(f"http://localhost:{port}", wait_until="networkidle")
@@ -314,9 +321,13 @@ class TerminalRecorder:
                 
                 # Clear terminal for clean start (PTY is already synced via term.fit())
                 await page.keyboard.press("Control+l")
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.5)  # Wait for clear to render
                 
-                # Mark recording start time
+                # Setup is complete - mark this time for video trimming
+                setup_complete_time = time.time()
+                setup_duration = setup_complete_time - video_start_time
+                
+                # Mark recording start time (for command timestamps)
                 recording_start = time.time()
                 
                 # Execute commands with timestamp tracking
@@ -356,11 +367,11 @@ class TerminalRecorder:
                 except subprocess.TimeoutExpired:
                     self._ttyd_process.kill()
         
-        # Convert video
+        # Convert video, trimming the setup portion
         video_files = list(output.parent.glob("*.webm"))
         if video_files:
             latest = max(video_files, key=lambda f: f.stat().st_mtime)
-            self._convert_to_mp4(latest, output)
+            self._convert_to_mp4(latest, output, trim_start=setup_duration)
             latest.unlink()
         
         return timestamps
@@ -451,17 +462,28 @@ class TerminalRecorder:
             await page.keyboard.press("Control+l")
             await asyncio.sleep(0.1)
     
-    def _convert_to_mp4(self, webm_path: Path, mp4_path: Path):
-        """Convert webm to mp4 using FFmpeg."""
-        cmd = [
-            "ffmpeg", "-y",
+    def _convert_to_mp4(self, webm_path: Path, mp4_path: Path, trim_start: float = 0):
+        """Convert webm to mp4 using FFmpeg, optionally trimming the start.
+        
+        Args:
+            webm_path: Input webm file
+            mp4_path: Output mp4 file
+            trim_start: Seconds to trim from the beginning (for removing setup)
+        """
+        cmd = ["ffmpeg", "-y"]
+        
+        # Add seek option to trim beginning (before input for fast seek)
+        if trim_start > 0:
+            cmd.extend(["-ss", f"{trim_start:.2f}"])
+        
+        cmd.extend([
             "-i", str(webm_path),
             "-c:v", "libx264",
             "-preset", "fast",
             "-crf", "22",
             "-pix_fmt", "yuv420p",
             str(mp4_path)
-        ]
+        ])
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"FFmpeg conversion failed: {result.stderr}")

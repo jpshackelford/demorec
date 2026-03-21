@@ -7,6 +7,13 @@ from rich.console import Console
 from . import __version__
 from .parser import parse_script
 from .runner import Runner
+from .stage import (
+    parse_highlights,
+    calculate_stage_directions,
+    format_directions_text,
+    format_directions_json,
+    format_directions_demorec,
+)
 
 console = Console()
 
@@ -125,6 +132,43 @@ def install():
         console.print(f"[bold red]✗[/] Installation failed")
         console.print(result.stderr)
         raise SystemExit(1)
+
+
+@main.command()
+@click.option("--rows", "-r", type=int, required=True, help="Terminal rows")
+@click.option("--highlights", "-h", type=str, required=True, 
+              help="Line ranges to highlight (e.g., '6-7,11-16,26-34')")
+@click.option("--format", "-f", "output_format", type=click.Choice(["text", "json", "demorec"]), 
+              default="text", help="Output format")
+def stage(rows: int, highlights: str, output_format: str):
+    """Calculate vim stage directions for highlighting code blocks.
+    
+    Given terminal dimensions and line ranges to highlight, outputs
+    the optimal vim commands for scrolling and selecting each block.
+    
+    Examples:
+    
+        demorec stage --rows 30 --highlights "6-7,11-16,26-34,63-73"
+        
+        demorec stage -r 30 -h "10-20,45-60" --format json
+        
+        demorec stage -r 30 -h "1-10,50-60" --format demorec
+    """
+    try:
+        blocks = parse_highlights(highlights)
+    except ValueError as e:
+        console.print(f"[bold red]Error parsing highlights:[/] {e}")
+        console.print("Expected format: '6-7,11-16,26-34' (comma-separated line ranges)")
+        raise SystemExit(1)
+    
+    directions = calculate_stage_directions(rows, blocks)
+    
+    if output_format == "json":
+        print(format_directions_json(directions, rows))
+    elif output_format == "demorec":
+        print(format_directions_demorec(directions))
+    else:
+        print(format_directions_text(directions, rows))
 
 
 if __name__ == "__main__":

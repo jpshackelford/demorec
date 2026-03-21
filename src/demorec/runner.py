@@ -288,15 +288,6 @@ class Runner:
         if result.returncode != 0:
             raise RuntimeError(f"Audio mixing failed: {result.stderr}")
     
-    def _mix_audio(self, video_path: Path, output: Path):
-        """Legacy audio mixing - concatenate and overlay."""
-        # Redirect to timed mixing if we have timed narrations
-        if self.timed_narrations:
-            return self._mix_audio_timed(video_path, output)
-        
-        import shutil
-        shutil.copy(video_path, output)
-    
     def _get_duration(self, media_path: Path) -> float:
         """Get duration of a media file in seconds."""
         import json

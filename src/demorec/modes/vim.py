@@ -2,7 +2,6 @@
 
 Provides Open, Highlight, and Close commands that handle all the vim
 complexity internally, including:
-- Installing vim if not present
 - Opening files with line numbers enabled
 - Calculating proper scroll positions based on terminal rows
 - Visual line selection for highlights
@@ -22,6 +21,29 @@ import shutil
 from dataclasses import dataclass
 
 
+class VimNotFoundError(Exception):
+    """Raised when vim is not installed."""
+    pass
+
+
+def check_vim_available() -> None:
+    """Check if vim is available on the system.
+    
+    Raises:
+        VimNotFoundError: If vim is not found in PATH with instructions to install.
+    """
+    if shutil.which("vim") is None:
+        raise VimNotFoundError(
+            "vim is not installed or not in PATH.\n\n"
+            "To install vim:\n"
+            "  Ubuntu/Debian: sudo apt-get install vim\n"
+            "  macOS:         brew install vim\n"
+            "  Fedora/RHEL:   sudo dnf install vim\n"
+            "  Alpine:        apk add vim\n\n"
+            "After installing, re-run your demorec script."
+        )
+
+
 @dataclass
 class VimState:
     """Tracks vim session state."""
@@ -30,24 +52,6 @@ class VimState:
     terminal_rows: int = 24
     in_visual_mode: bool = False
     file_total_lines: int | None = None
-
-
-def ensure_vim_installed() -> list[tuple[str, float]]:
-    """Return commands to install vim if not present.
-    
-    Returns list of (keys_to_type, delay_after) tuples.
-    """
-    # Check if vim exists - if not, install it
-    # We use 'command -v' which is POSIX and works in bash
-    commands = []
-    
-    # Install vim if needed (works on Debian/Ubuntu)
-    # This is a single command that checks and installs atomically
-    install_cmd = "command -v vim >/dev/null || { echo 'Installing vim...' && sudo apt-get update -qq && sudo apt-get install -y -qq vim; }"
-    commands.append((install_cmd, 0))
-    commands.append(("ENTER", 3.0))  # Wait for potential install
-    
-    return commands
 
 
 def generate_open_commands(file_path: str, state: VimState) -> list[tuple[str, float]]:
@@ -236,12 +240,15 @@ class VimCommandExpander:
         Returns:
             List of (keys_to_type, delay_after) tuples
             Special keys: "ENTER", "ESCAPE", "TAB"
+            
+        Raises:
+            VimNotFoundError: If vim is not installed (checked on first Open command)
         """
         commands = []
         
-        # Ensure vim is installed (only check once per session)
+        # Check vim is available (only once per session, fail fast with clear message)
         if cmd_name == "Open" and not self._vim_checked:
-            commands.extend(ensure_vim_installed())
+            check_vim_available()
             self._vim_checked = True
         
         if cmd_name == "Open":

@@ -9,12 +9,12 @@ import subprocess
 import tempfile
 import signal
 import socket
-import time
 import os
 from pathlib import Path
 
 from ..parser import Segment, Command, parse_time
 from .vim import VimCommandExpander
+from .recording import execute_with_narration_timing
 
 
 def _find_free_port() -> int:
@@ -326,31 +326,15 @@ class TerminalRecorder:
                 if term_size and term_size.get('rows'):
                     self._vim_expander.set_terminal_rows(term_size['rows'])
                 
-                # Mark recording start time
-                recording_start = time.time()
+                # Store page for command execution
+                self._page = page
                 
-                # Execute commands with timestamp tracking
-                for cmd_idx, cmd in enumerate(segment.commands):
-                    # Check if this command has narration
-                    narration = self._timed_narrations.get(cmd_idx)
-                    
-                    # Handle "before" narration - add delay before command
-                    if narration and narration.mode == "before":
-                        await asyncio.sleep(narration.duration)
-                    
-                    # Record command start time
-                    cmd_start = time.time() - recording_start
-                    
-                    # Execute the command
-                    await self._execute_command(page, cmd)
-                    
-                    # Record command end time
-                    cmd_end = time.time() - recording_start
-                    timestamps[cmd_idx] = (cmd_start, cmd_end)
-                    
-                    # Handle "after" narration - add delay after command
-                    if narration and narration.mode == "after":
-                        await asyncio.sleep(narration.duration)
+                # Execute commands with shared timestamp tracking
+                timestamps = await execute_with_narration_timing(
+                    commands=segment.commands,
+                    timed_narrations=self._timed_narrations,
+                    execute_fn=self._execute_command,
+                )
                 
                 # Final pause
                 await asyncio.sleep(0.5)
@@ -375,22 +359,25 @@ class TerminalRecorder:
         
         return timestamps
     
-    async def _send_keys(self, page, text: str, delay: float = None):
+    async def _send_keys(self, text: str, delay: float = None):
         """Send keystrokes to the terminal."""
         if delay is None:
             delay = self.typing_speed
         
+        page = self._page
         for char in text:
             await page.keyboard.type(char, delay=0)
             if delay > 0:
                 await asyncio.sleep(delay)
     
-    async def _execute_command(self, page, cmd: Command):
+    async def _execute_command(self, cmd: Command):
         """Execute a command in the real PTY."""
+        page = self._page
+        
         # Check for high-level vim commands first
         if self._vim_expander.is_vim_command(cmd.name):
             expanded = self._vim_expander.expand_command(cmd.name, cmd.args)
-            await self._execute_vim_sequence(page, expanded)
+            await self._execute_vim_sequence(expanded)
             return
         
         if cmd.name == "SetTheme":
@@ -399,7 +386,7 @@ class TerminalRecorder:
         elif cmd.name == "Type":
             if cmd.args:
                 text = cmd.args[0]
-                await self._send_keys(page, text)
+                await self._send_keys(text)
         
         elif cmd.name == "Enter":
             await page.keyboard.press("Enter")
@@ -409,7 +396,7 @@ class TerminalRecorder:
             # Type command and execute
             if cmd.args:
                 command = cmd.args[0]
-                await self._send_keys(page, command)
+                await self._send_keys(command)
                 await page.keyboard.press("Enter")
                 
                 # Wait for output
@@ -467,14 +454,14 @@ class TerminalRecorder:
             await page.keyboard.press("Control+l")
             await asyncio.sleep(0.1)
 
-    async def _execute_vim_sequence(self, page, commands: list[tuple[str, float]]):
+    async def _execute_vim_sequence(self, commands: list[tuple[str, float]]):
         """Execute a sequence of vim keystrokes.
         
         Args:
-            page: Playwright page
             commands: List of (keys, delay_after) tuples
                      Special keys: "ENTER", "ESCAPE", "TAB"
         """
+        page = self._page
         for keys, delay in commands:
             if keys == "ENTER":
                 await page.keyboard.press("Enter")
@@ -484,7 +471,7 @@ class TerminalRecorder:
                 await page.keyboard.press("Tab")
             else:
                 # Regular text - type it character by character for visibility
-                await self._send_keys(page, keys, delay=0.02)
+                await self._send_keys(keys, delay=0.02)
             
             if delay > 0:
                 await asyncio.sleep(delay)

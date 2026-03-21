@@ -131,6 +131,8 @@ class TerminalRecorder:
         env = os.environ.copy()
         env["TERM"] = "xterm-256color"
         env["PS1"] = "$ "  # Simple prompt
+        # Remove PROMPT_COMMAND to avoid unwanted prompt modifications
+        env.pop("PROMPT_COMMAND", None)
         
         # Start ttyd
         self._ttyd_process = subprocess.Popen(

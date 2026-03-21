@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 
 from ..parser import Segment, Command, parse_time
+from ..js import TERMINAL_RESIZE_JS
 from .vim import VimCommandExpander
 from .recording import execute_with_narration_timing
 
@@ -215,104 +216,29 @@ class TerminalRecorder:
                 await page.wait_for_function("() => window.term !== undefined", timeout=10000)
                 await asyncio.sleep(0.3)  # Let terminal fully initialize
                 
-                # VHS-style terminal setup:
-                # 1. Make container fill viewport
-                # 2. Apply font/theme settings
-                # 3. Call term.fit() which:
-                #    - Calculates proper rows/cols for viewport
-                #    - Triggers onResize event
-                #    - Automatically syncs PTY via ttyd's WebSocket protocol
-                term_size = await page.evaluate("""(config) => {
-                    if (!window.term) return null;
-                    
-                    // Step 1: Make container fill viewport
-                    const container = document.querySelector('#terminal-container') || 
-                                      document.querySelector('.xterm');
-                    if (container) {
-                        container.style.width = '100vw';
-                        container.style.height = '100vh';
-                        container.style.position = 'fixed';
-                        container.style.top = '0';
-                        container.style.left = '0';
-                        container.style.padding = '0';
-                        container.style.margin = '0';
+                # Load terminal resize functions from external JS
+                await page.evaluate(TERMINAL_RESIZE_JS)
+                
+                # Initialize terminal with VHS-style setup
+                term_size = await page.evaluate(
+                    "config => initializeTerminal(config)",
+                    {
+                        "fontSize": self.font_size,
+                        "fontFamily": self.font_family,
+                        "lineHeight": self.line_height,
+                        "theme": THEMES.get(self.theme),
+                        "desiredRows": self.desired_rows
                     }
-                    
-                    // Step 2: Apply terminal options (like VHS does)
-                    const term = window.term;
-                    term.options.fontFamily = config.fontFamily;
-                    term.options.lineHeight = config.lineHeight;
-                    term.options.cursorBlink = false;
-                    
-                    // Apply theme if available
-                    if (config.theme) {
-                        term.options.theme = config.theme;
-                    }
-                    
-                    // Step 3: Initial fit to get baseline rows
-                    term.fit();
-                    
-                    let baselineRows = term.rows;
-                    let finalFontSize = config.fontSize;
-                    
-                    // Step 4: If desired rows specified, calculate font size
-                    if (config.desiredRows && config.desiredRows !== baselineRows) {
-                        // VHS approach: font size scales inversely with row count
-                        // If we want fewer rows, we need larger font
-                        finalFontSize = Math.round(config.fontSize * (baselineRows / config.desiredRows));
-                        term.options.fontSize = finalFontSize;
-                        
-                        // Re-fit with new font size - this triggers onResize
-                        // which sends RESIZE_TERMINAL to ttyd, syncing the PTY
-                        term.fit();
-                    } else {
-                        term.options.fontSize = finalFontSize;
-                        term.fit();
-                    }
-                    
-                    return { 
-                        rows: term.rows, 
-                        cols: term.cols,
-                        fontSize: term.options.fontSize,
-                        baselineRows: baselineRows
-                    };
-                }""", {
-                    "fontSize": self.font_size,
-                    "fontFamily": self.font_family,
-                    "lineHeight": self.line_height,
-                    "theme": THEMES.get(self.theme),
-                    "desiredRows": self.desired_rows
-                })
+                )
                 await asyncio.sleep(0.3)
                 
                 # If rows still don't match, do iterative refinement
                 if self.desired_rows and term_size and term_size['rows'] != self.desired_rows:
                     for _ in range(3):  # Max 3 iterations
-                        term_size = await page.evaluate("""(desiredRows) => {
-                            if (!window.term) return null;
-                            
-                            const term = window.term;
-                            const currentRows = term.rows;
-                            const currentFontSize = term.options.fontSize || 14;
-                            
-                            if (currentRows === desiredRows) {
-                                return { rows: currentRows, cols: term.cols, fontSize: currentFontSize, done: true };
-                            }
-                            
-                            // Fine-tune font size based on mismatch
-                            const newFontSize = Math.round(currentFontSize * (currentRows / desiredRows));
-                            term.options.fontSize = newFontSize;
-                            
-                            // term.fit() handles both xterm resize AND PTY sync
-                            term.fit();
-                            
-                            return { 
-                                rows: term.rows, 
-                                cols: term.cols,
-                                fontSize: newFontSize,
-                                done: term.rows === desiredRows
-                            };
-                        }""", self.desired_rows)
+                        term_size = await page.evaluate(
+                            "desiredRows => refineTerminalRows(desiredRows)",
+                            self.desired_rows
+                        )
                         await asyncio.sleep(0.2)
                         
                         if term_size and term_size.get('done'):

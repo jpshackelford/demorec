@@ -13,6 +13,9 @@ from .stage import (
     format_directions_text,
     format_directions_json,
     format_directions_demorec,
+    detect_checkpoints,
+    format_checkpoints_text,
+    format_checkpoints_json,
 )
 
 console = Console()
@@ -169,6 +172,37 @@ def stage(rows: int, highlights: str, output_format: str):
         print(format_directions_demorec(directions))
     else:
         print(format_directions_text(directions, rows))
+
+
+@main.command()
+@click.argument("script", type=click.Path(exists=True, path_type=Path))
+@click.option("--format", "-f", "output_format", type=click.Choice(["text", "json"]), 
+              default="text", help="Output format")
+def checkpoints(script: Path, output_format: str):
+    """Detect natural checkpoint locations in a script.
+    
+    Automatically identifies "show moments" where verification is useful:
+    
+    \b
+    - Visual selections (V...G patterns) - highlighted code should be visible
+    - Narration points (@narrate:after) - narrated content should be on screen
+    - File opens (vim + Enter) - file should be loaded
+    
+    Examples:
+    
+        demorec checkpoints examples/vim_demo.demorec
+        
+        demorec checkpoints script.demorec --format json
+    """
+    console.print(f"[bold blue]demorec[/] checkpoints")
+    console.print(f"[dim]Analyzing:[/] {script}\n")
+    
+    detected = detect_checkpoints(script)
+    
+    if output_format == "json":
+        print(format_checkpoints_json(detected))
+    else:
+        print(format_checkpoints_text(detected))
 
 
 if __name__ == "__main__":

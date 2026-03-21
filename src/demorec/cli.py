@@ -17,6 +17,7 @@ from .stage import (
     format_checkpoints_text,
     format_checkpoints_json,
 )
+from .preview import TerminalPreviewer
 
 console = Console()
 
@@ -203,6 +204,121 @@ def checkpoints(script: Path, output_format: str):
         print(format_checkpoints_json(detected))
     else:
         print(format_checkpoints_text(detected))
+
+
+@main.command()
+@click.argument("script", type=click.Path(exists=True, path_type=Path))
+@click.option("--rows", "-r", type=int, default=30, help="Terminal rows (default: 30)")
+@click.option("--screenshots/--no-screenshots", default=None,
+              help="Always/never capture screenshots (default: on error only)")
+@click.option("--output-dir", "-o", type=click.Path(path_type=Path),
+              help="Directory for screenshots (default: .demorec_preview)")
+def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path | None):
+    """Preview a script and verify checkpoints.
+    
+    Runs through the script, automatically detecting "show moments" and
+    verifying that expected content is visible at each checkpoint.
+    
+    \b
+    Screenshot behavior:
+      (default)        Screenshots only on errors
+      --screenshots    Always capture screenshots
+      --no-screenshots Never capture screenshots
+    
+    Examples:
+    
+        demorec preview script.demorec --rows 30
+        
+        demorec preview script.demorec --screenshots
+        
+        demorec preview script.demorec --no-screenshots
+    """
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    
+    console.print(f"[bold blue]demorec[/] preview")
+    console.print(f"[dim]Script:[/] {script}")
+    console.print(f"[dim]Terminal:[/] {rows} rows")
+    
+    # Parse the script
+    try:
+        plan = parse_script(script)
+    except Exception as e:
+        console.print(f"[bold red]Parse error:[/] {e}")
+        raise SystemExit(1)
+    
+    # Get the terminal segment with commands
+    terminal_segments = [s for s in plan.segments if s.mode == "terminal" and s.commands]
+    if not terminal_segments:
+        console.print("[bold red]Error:[/] No terminal segments with commands found in script")
+        raise SystemExit(1)
+    
+    segment = terminal_segments[0]
+    
+    # Determine screenshot mode
+    if screenshots is True:
+        screenshot_mode = "always"
+    elif screenshots is False:
+        screenshot_mode = "never"
+    else:
+        screenshot_mode = "on_error"
+    
+    console.print(f"[dim]Screenshots:[/] {screenshot_mode}")
+    console.print()
+    
+    # Run preview
+    previewer = TerminalPreviewer(
+        rows=rows,
+        screenshots=screenshot_mode
+    )
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Running preview...", total=None)
+        
+        try:
+            result = previewer.preview(script, segment, output_dir)
+        except Exception as e:
+            console.print(f"[bold red]Preview error:[/] {e}")
+            raise SystemExit(1)
+    
+    # Display results
+    console.print()
+    
+    for i, r in enumerate(result.results, 1):
+        if r.passed:
+            status = "[bold green]✓[/]"
+        else:
+            status = "[bold red]✗[/]"
+        
+        console.print(f"{status} Checkpoint {i} (line {r.checkpoint.line_number}): ", end="")
+        
+        if r.passed:
+            console.print("[green]PASS[/]")
+        else:
+            console.print("[red]FAIL[/]")
+        
+        if r.expected_lines:
+            console.print(f"    Expected: lines {r.expected_lines[0]}-{r.expected_lines[1]}")
+        if r.visible_lines:
+            console.print(f"    Visible:  lines {r.visible_lines[0]}-{r.visible_lines[1]}")
+        if r.error_message:
+            console.print(f"    [red]Error: {r.error_message}[/]")
+        if r.screenshot_path:
+            console.print(f"    Screenshot: {r.screenshot_path}")
+        
+        console.print()
+    
+    # Summary
+    if result.failed > 0:
+        console.print(f"[bold red]Summary: {result.passed}/{result.total} passed, {result.failed} failed[/]")
+        if result.screenshot_dir:
+            console.print(f"[dim]Screenshots saved to: {result.screenshot_dir}[/]")
+        raise SystemExit(1)
+    else:
+        console.print(f"[bold green]Summary: {result.passed}/{result.total} passed[/]")
 
 
 if __name__ == "__main__":

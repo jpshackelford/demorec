@@ -306,35 +306,61 @@ jpshackelford/demorec/
    ffmpeg -i video.mp4 -ss 30 -vframes 1 frame_30s.png
    ```
 
-8. **Terminal Size/Row Control - What Works and What Doesn't:**
+8. **Terminal Size/Row Control - The VHS Solution:**
 
-   **The Problem:** Users want to control how many rows are visible in terminal recordings (e.g., 24 rows for classic look, 50 for more content).
+   **The Problem:** Users want to control how many rows are visible in terminal recordings (e.g., 24 rows for classic look, 50 for more content). The challenge is keeping xterm.js and the underlying PTY synchronized.
 
-   **What We Tried:**
+   **What We Learned from VHS:**
 
-   | Approach | Result | Why |
-   |----------|--------|-----|
-   | Calculate font size with fixed formula | Failed | xterm.js line height depends on actual font metrics, not just fontSize |
-   | ttyd `-t rows=N` option | Failed | Sets xterm.js buffer size, not visible rows |
-   | `term.resize(cols, rows)` API alone | Partial | Correctly limits rows but leaves empty viewport space |
-   | CSS `transform: scale()` | Failed | Scales pixels, causes fuzzy/blurry text |
-   | Query xterm.js then set font | Works | Let xterm.js tell us actual row count, then calculate font size |
+   VHS uses a elegant solution: `term.fit()` from xterm.js's fit addon handles BOTH:
+   1. Calculating proper rows/cols based on viewport and font settings
+   2. Triggering an `onResize` event that ttyd catches and propagates to the PTY
 
-   **The Solution:** Use the "Option 2" approach:
-   ```javascript
-   // After xterm.js initializes with default font
-   const actualRows = window.term.rows;  // e.g., 48
-   const currentFontSize = window.term.options.fontSize;  // e.g., 14
-   const desiredRows = 24;
+   **How It Works:**
    
-   // Calculate new font size from xterm's own math
-   const newFontSize = Math.round(currentFontSize * (actualRows / desiredRows));
-   window.term.options.fontSize = newFontSize;  // e.g., 28
+   ```
+   term.fit() called
+        │
+        ▼
+   xterm.js calculates rows/cols
+        │
+        ▼
+   onResize event fired ──────► ttyd JavaScript client
+        │                               │
+        ▼                               ▼
+   xterm.js resized              WebSocket RESIZE_TERMINAL
+        │                               │
+        ▼                               ▼
+   Video shows correct rows      ttyd server receives message
+                                        │
+                                        ▼
+                                 ioctl(TIOCSWINSZ) updates PTY
    ```
 
-   **Key Insight:** Don't try to predict xterm.js behavior - query it after initialization and adjust based on what it actually calculated.
+   **The Solution (VHS-style):**
+   ```javascript
+   // 1. Set font options
+   term.options.fontSize = newFontSize;
+   term.options.fontFamily = fontFamily;
+   term.options.lineHeight = lineHeight;
+   
+   // 2. Call fit() - this does everything!
+   term.fit();  // Calculates rows, resizes xterm, syncs PTY via WebSocket
+   
+   // 3. Read back actual dimensions
+   const rows = term.rows;  // PTY is already synced
+   ```
 
-   **UX Decision:** Instead of exposing raw row counts (which cannot be perfectly achieved), use named presets:
+   **Why This Is Better Than Our Previous Approach:**
+   - ❌ Old: `window.dispatchEvent('resize')` + manual `stty rows X cols Y`
+   - ✅ New: `term.fit()` handles both in one call via ttyd's WebSocket protocol
+
+   **Key Files in ttyd:**
+   - `html/src/components/terminal/xterm/index.ts:184-189`: Catches `onResize`, sends `RESIZE_TERMINAL`
+   - `src/protocol.c:320-324`: Server receives message, calls `pty_resize()`
+   - `src/pty.c:155-156`: Uses `ioctl(TIOCSWINSZ)` to update actual PTY
+
+   **UX Decision:** Use named presets instead of raw row counts:
    ```
    @terminal:size large   # ~24 rows, classic terminal
    @terminal:size medium  # ~36 rows, balanced

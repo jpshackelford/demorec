@@ -1,0 +1,33 @@
+# browser_basic.demorec - Basic browser test with reliable selectors
+Output browser_basic.mp4
+Set Width 1280
+Set Height 720
+
+@mode browser
+
+# Navigate to a simple page
+Navigate "https://example.com"
+Sleep 2s
+
+# Test Wait - wait for an element
+Wait "h1"
+Sleep 1s
+
+# Test Highlight
+Highlight "h1"
+Sleep 2s
+
+# Test Screenshot
+Screenshot "example_page.png"
+Sleep 1s
+
+# Navigate to Google
+Navigate "https://www.google.com"
+Sleep 2s
+
+# Test Sleep
+Sleep 2s
+
+# Test Press - just press escape
+Press "Escape"
+Sleep 1s

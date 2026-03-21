@@ -16,6 +16,38 @@ from .tts import get_tts_engine, get_audio_duration
 console = Console()
 
 
+def format_srt_time(seconds: float) -> str:
+    """Format seconds as SRT timestamp: HH:MM:SS,mmm"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    millis = int((seconds % 1) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+def split_caption(text: str, max_len: int = 42) -> list[str]:
+    """Split long captions at word boundaries for readability."""
+    if len(text) <= max_len:
+        return [text]
+    
+    lines = []
+    words = text.split()
+    current_line = ""
+    
+    for word in words:
+        if len(current_line) + len(word) + 1 <= max_len:
+            current_line = f"{current_line} {word}".strip()
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = word
+    
+    if current_line:
+        lines.append(current_line)
+    
+    return lines
+
+
 @dataclass
 class TimedNarration:
     """A narration with timing information."""
@@ -197,37 +229,6 @@ class Runner:
     
     def _generate_srt(self, output_path: Path):
         """Generate SRT subtitle file from timed narrations."""
-        
-        def format_time(seconds: float) -> str:
-            """Format seconds as SRT timestamp: HH:MM:SS,mmm"""
-            hours = int(seconds // 3600)
-            minutes = int((seconds % 3600) // 60)
-            secs = int(seconds % 60)
-            millis = int((seconds % 1) * 1000)
-            return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
-        
-        def split_caption(text: str, max_len: int = 42) -> list[str]:
-            """Split long captions at word boundaries for readability."""
-            if len(text) <= max_len:
-                return [text]
-            
-            lines = []
-            words = text.split()
-            current_line = ""
-            
-            for word in words:
-                if len(current_line) + len(word) + 1 <= max_len:
-                    current_line = f"{current_line} {word}".strip()
-                else:
-                    if current_line:
-                        lines.append(current_line)
-                    current_line = word
-            
-            if current_line:
-                lines.append(current_line)
-            
-            return lines
-        
         with open(output_path, "w", encoding="utf-8") as f:
             for i, narration in enumerate(self.timed_narrations, 1):
                 start = max(0, narration.start_time)  # Ensure non-negative
@@ -238,7 +239,7 @@ class Runner:
                 caption_text = "\n".join(lines)
                 
                 f.write(f"{i}\n")
-                f.write(f"{format_time(start)} --> {format_time(end)}\n")
+                f.write(f"{format_srt_time(start)} --> {format_srt_time(end)}\n")
                 f.write(f"{caption_text}\n\n")
     
     def _mix_audio_timed(self, video_path: Path, output: Path):

@@ -1,0 +1,34 @@
+# browser_test.demorec - Test all browser commands
+Output browser_test.mp4
+Set Width 1280
+Set Height 720
+
+@mode browser
+
+# Test Navigate - go to example.com
+Navigate "https://example.com"
+Sleep 2s
+
+# Test Highlight - highlight the h1 header
+Highlight "h1"
+Sleep 1s
+
+# Test Unhighlight - remove the highlight
+Unhighlight "h1"
+Sleep 1s
+
+# Test Scroll - scroll down
+Scroll "down" 100
+Sleep 1s
+
+# Test Scroll - scroll up
+Scroll "up" 50
+Sleep 1s
+
+# Test Hover - hover on a link
+Hover "a"
+Sleep 1s
+
+# Test Screenshot - take a screenshot
+Screenshot "test_screenshot.png"
+Sleep 1s

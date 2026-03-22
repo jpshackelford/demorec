@@ -5,3 +5,6 @@ __pycache__/
 *.webm
 .DS_Store
 
+# Exception: Allow PR evidence files
+!.pr/*.mp4
+

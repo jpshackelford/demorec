@@ -33,6 +33,9 @@ class Segment:
     mode: Literal["terminal", "browser"]
     commands: list[Command] = field(default_factory=list)
     narrations: dict[int, Narration] = field(default_factory=dict)  # command_index -> narration
+    # Terminal-specific settings
+    size: Literal["large", "medium", "small", "tiny"] | None = None  # Display size preset
+    rows: int | None = None  # Explicit row count (overrides size preset)
 
 
 @dataclass
@@ -189,6 +192,37 @@ def parse_script(path: Path) -> Plan:
                 if mode in ("terminal", "browser"):
                     current_segment = Segment(mode=mode)
                     plan.segments.append(current_segment)
+            continue
+        
+        # Handle terminal directives: @terminal:size, @terminal:rows
+        if cmd_name.startswith("@terminal:"):
+            directive = cmd_name.split(":", 1)[1].lower()
+            
+            # @terminal:size large|medium|small|tiny (preset)
+            if directive == "size" and cmd_args:
+                size = cmd_args[0].lower()
+                if size in ("large", "medium", "small", "tiny"):
+                    if current_segment and current_segment.mode == "terminal":
+                        current_segment.size = size
+                    elif current_segment is None:
+                        # Auto-create terminal segment
+                        current_segment = Segment(mode="terminal", size=size)
+                        plan.segments.append(current_segment)
+            
+            # @terminal:rows N (explicit row count)
+            elif directive == "rows" and cmd_args:
+                try:
+                    rows = int(cmd_args[0])
+                    if 10 <= rows <= 100:  # Reasonable bounds
+                        if current_segment and current_segment.mode == "terminal":
+                            current_segment.rows = rows
+                        elif current_segment is None:
+                            # Auto-create terminal segment
+                            current_segment = Segment(mode="terminal", rows=rows)
+                            plan.segments.append(current_segment)
+                except ValueError:
+                    pass  # Invalid row count, ignore
+            
             continue
         
         # All other commands require an active segment

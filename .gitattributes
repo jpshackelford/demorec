@@ -1,0 +1,2 @@
+# Mark generated files so GitHub collapses them in PR diffs
+uv.lock linguist-generated=true

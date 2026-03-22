@@ -2,6 +2,7 @@
 
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from rich.console import Console
@@ -15,6 +16,49 @@ from .tts import get_tts_engine, get_audio_duration
 console = Console()
 
 
+def format_srt_time(seconds: float) -> str:
+    """Format seconds as SRT timestamp: HH:MM:SS,mmm"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    millis = int((seconds % 1) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+def split_caption(text: str, max_len: int = 42) -> list[str]:
+    """Split long captions at word boundaries for readability."""
+    if len(text) <= max_len:
+        return [text]
+    
+    lines = []
+    words = text.split()
+    current_line = ""
+    
+    for word in words:
+        if len(current_line) + len(word) + 1 <= max_len:
+            current_line = f"{current_line} {word}".strip()
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = word
+    
+    if current_line:
+        lines.append(current_line)
+    
+    return lines
+
+
+@dataclass
+class TimedNarration:
+    """A narration with timing information."""
+    text: str
+    mode: str  # before, during, after
+    audio_path: Path
+    duration: float  # audio duration in seconds
+    start_time: float = 0.0  # when to start playing (set during recording)
+    cmd_index: int = 0  # which command this is attached to
+
+
 class Runner:
     """Orchestrates recording of a demo script."""
     
@@ -22,7 +66,9 @@ class Runner:
         self.plan = plan
         self.temp_dir = Path(tempfile.mkdtemp(prefix="demorec_"))
         self.segment_files: list[Path] = []
-        self.audio_files: list[Path] = []
+        self.timed_narrations: list[TimedNarration] = []  # All narrations with timing
+        # Map segment index -> {cmd_index -> TimedNarration}
+        self._segment_narrations: dict[int, dict[int, TimedNarration]] = {}
         self.has_narration = any(
             seg.narrations for seg in plan.segments
         )
@@ -40,7 +86,8 @@ class Runner:
                 self._generate_narration()
                 progress.update(task, completed=True)
             
-            # Record each segment
+            # Record each segment, tracking time offsets
+            time_offset = 0.0
             for i, segment in enumerate(self.plan.segments):
                 task = progress.add_task(
                     f"Recording segment {i+1}/{len(self.plan.segments)} ({segment.mode})...",
@@ -48,8 +95,9 @@ class Runner:
                 )
                 
                 segment_file = self.temp_dir / f"segment_{i:03d}.mp4"
-                self._record_segment(segment, segment_file)
+                segment_duration = self._record_segment(i, segment, segment_file, time_offset)
                 self.segment_files.append(segment_file)
+                time_offset += segment_duration
                 
                 progress.update(task, completed=True)
             
@@ -62,34 +110,75 @@ class Runner:
             else:
                 concat_output = self.segment_files[0]
             
+            # Generate SRT subtitles if we have narration
+            srt_path = None
+            if self.timed_narrations:
+                task = progress.add_task("Generating subtitles...", total=None)
+                srt_path = self.plan.output.with_suffix('.srt')
+                self._generate_srt(srt_path)
+                progress.update(task, completed=True)
+            
             # Add audio if we have narration
-            if self.audio_files:
+            if self.timed_narrations:
                 task = progress.add_task("Mixing audio...", total=None)
-                self._mix_audio(concat_output, self.plan.output)
+                self._mix_audio_timed(concat_output, self.plan.output)
                 progress.update(task, completed=True)
             else:
                 import shutil
                 shutil.copy(concat_output, self.plan.output)
     
     def _generate_narration(self):
-        """Pre-generate all narration audio clips."""
+        """Pre-generate all narration audio clips and get durations."""
         engine = get_tts_engine(self.plan.voice)
         
         narration_idx = 0
-        for segment in self.plan.segments:
+        for seg_idx, segment in enumerate(self.plan.segments):
             for cmd_idx, narration in segment.narrations.items():
                 audio_file = self.temp_dir / f"narration_{narration_idx:03d}.mp3"
                 engine.synthesize(narration.text, audio_file)
-                self.audio_files.append(audio_file)
+                
+                # Get actual audio duration
+                duration = get_audio_duration(audio_file)
+                
+                # Store with timing info
+                timed = TimedNarration(
+                    text=narration.text,
+                    mode=narration.mode,
+                    audio_path=audio_file,
+                    duration=duration,
+                    cmd_index=cmd_idx,
+                )
+                self.timed_narrations.append(timed)
+                
+                # Store in segment narrations map (no monkey-patching)
+                if seg_idx not in self._segment_narrations:
+                    self._segment_narrations[seg_idx] = {}
+                self._segment_narrations[seg_idx][cmd_idx] = timed
+                
                 narration_idx += 1
     
-    def _record_segment(self, segment: Segment, output: Path):
-        """Record a single segment."""
+    def _record_segment(self, seg_idx: int, segment: Segment, output: Path, time_offset: float = 0.0) -> float:
+        """Record a single segment.
+        
+        Args:
+            seg_idx: Index of this segment in the plan
+            segment: The segment to record
+            output: Output video file path
+            time_offset: Starting time offset for this segment (for multi-segment timing)
+            
+        Returns:
+            The duration of the recorded segment in seconds
+        """
+        # Get timed narrations for this segment (if any)
+        timed_narrations = self._segment_narrations.get(seg_idx, {})
+        
         if segment.mode == "terminal":
             recorder = TerminalRecorder(
                 width=self.plan.width,
                 height=self.plan.height,
                 framerate=self.plan.framerate,
+                size=segment.size,
+                rows=segment.rows,  # Explicit row count (overrides size preset)
             )
         else:
             recorder = BrowserRecorder(
@@ -98,7 +187,26 @@ class Runner:
                 framerate=self.plan.framerate,
             )
         
-        recorder.record(segment, output)
+        # Record and get command timestamps
+        timestamps = recorder.record(segment, output, timed_narrations)
+        
+        # Update narration start times based on recorded timestamps
+        for cmd_idx, timed in timed_narrations.items():
+            if cmd_idx in timestamps:
+                cmd_start, cmd_end = timestamps[cmd_idx]
+                if timed.mode == "before":
+                    # Narration plays before command, so it starts at cmd_start - duration
+                    # But since we add delay in recorder, narration starts at cmd_start - duration
+                    timed.start_time = time_offset + cmd_start - timed.duration
+                elif timed.mode == "during":
+                    # Narration plays during command
+                    timed.start_time = time_offset + cmd_start
+                elif timed.mode == "after":
+                    # Narration plays after command
+                    timed.start_time = time_offset + cmd_end
+        
+        # Return segment duration
+        return self._get_duration(output)
     
     def _concat_segments(self, output: Path):
         """Concatenate all segment files using FFmpeg."""
@@ -122,49 +230,61 @@ class Runner:
         if result.returncode != 0:
             raise RuntimeError(f"FFmpeg concat failed: {result.stderr}")
     
-    def _mix_audio(self, video_path: Path, output: Path):
-        """Mix narration audio with video.
-        
-        For now, we concatenate all narration files and overlay on video.
-        TODO: Proper timing based on narration mode (before/during/after).
-        """
-        if not self.audio_files:
+    def _generate_srt(self, output_path: Path):
+        """Generate SRT subtitle file from timed narrations."""
+        with open(output_path, "w", encoding="utf-8") as f:
+            for i, narration in enumerate(self.timed_narrations, 1):
+                start = max(0, narration.start_time)  # Ensure non-negative
+                end = start + narration.duration
+                
+                # Split long captions
+                lines = split_caption(narration.text)
+                caption_text = "\n".join(lines)
+                
+                f.write(f"{i}\n")
+                f.write(f"{format_srt_time(start)} --> {format_srt_time(end)}\n")
+                f.write(f"{caption_text}\n\n")
+    
+    def _mix_audio_timed(self, video_path: Path, output: Path):
+        """Mix narration audio with video at correct timestamps."""
+        if not self.timed_narrations:
             import shutil
             shutil.copy(video_path, output)
             return
         
-        # Concatenate all audio files
-        audio_concat = self.temp_dir / "narration_concat.txt"
-        with open(audio_concat, "w") as f:
-            for audio_file in self.audio_files:
-                f.write(f"file '{audio_file}'\n")
-        
-        combined_audio = self.temp_dir / "narration_combined.mp3"
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(audio_concat),
-            "-c", "copy",
-            str(combined_audio)
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"Audio concat failed: {result.stderr}")
-        
-        # Get durations
         video_duration = self._get_duration(video_path)
-        audio_duration = self._get_duration(combined_audio)
         
-        # If audio is longer than video, we need to extend video
-        # For now, just overlay what we have
+        # Build FFmpeg filter for mixing multiple audio tracks at specific times
+        # We use the adelay filter to position each narration
+        
+        inputs = ["-i", str(video_path)]
+        filter_parts = []
+        
+        for i, narration in enumerate(self.timed_narrations):
+            inputs.extend(["-i", str(narration.audio_path)])
+            # adelay takes milliseconds
+            delay_ms = int(max(0, narration.start_time) * 1000)
+            filter_parts.append(f"[{i+1}:a]adelay={delay_ms}|{delay_ms}[a{i}]")
+        
+        # Mix all delayed audio tracks together
+        # Use normalize=0 to prevent volume reduction, and dropout_transition=0
+        # to avoid volume changes as tracks end (our narrations are sequential, not overlapping)
+        if len(self.timed_narrations) == 1:
+            filter_complex = f"{filter_parts[0]}; [a0]apad[aout]"
+        else:
+            mix_inputs = "".join(f"[a{i}]" for i in range(len(self.timed_narrations)))
+            # normalize=0 keeps consistent volume for sequential (non-overlapping) audio
+            filter_complex = "; ".join(filter_parts) + f"; {mix_inputs}amix=inputs={len(self.timed_narrations)}:duration=longest:normalize=0:dropout_transition=0[aout]"
+        
         cmd = [
             "ffmpeg", "-y",
-            "-i", str(video_path),
-            "-i", str(combined_audio),
+            *inputs,
+            "-filter_complex", filter_complex,
+            "-map", "0:v",
+            "-map", "[aout]",
             "-c:v", "copy",
             "-c:a", "aac",
-            "-shortest",  # Use shorter of the two
+            "-t", str(video_duration),  # Limit to video duration
             str(output)
         ]
         

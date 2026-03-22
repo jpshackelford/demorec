@@ -1,0 +1,35 @@
+# browser_forms.demorec - Test browser form interactions
+# Using DuckDuckGo as a simple form test
+Output browser_forms.mp4
+Set Width 1280
+Set Height 720
+
+@mode browser
+
+# Navigate to DuckDuckGo
+Navigate "https://duckduckgo.com"
+Sleep 2s
+
+# Wait for search input to be ready
+Wait "input[name='q']"
+Sleep 1s
+
+# Test Fill - fill the search box
+Fill "input[name='q']" "demorec demo tool"
+Sleep 1s
+
+# Test Press - press Enter to submit
+Press "Enter"
+Sleep 3s
+
+# Test Scroll down the results
+Scroll "down" 300
+Sleep 1s
+
+# Test Scroll up
+Scroll "up" 150
+Sleep 1s
+
+# Take a screenshot of results
+Screenshot "search_results.png"
+Sleep 1s

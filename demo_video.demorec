@@ -1,0 +1,49 @@
+# Demo: Terminal + Vim Primitives working after JS extraction
+Output demo_video.mp4
+Set Width 1280
+Set Height 720
+
+@mode terminal
+@terminal:rows 30
+Set Theme "Dracula"
+
+# Show terminal is working
+Type "echo 'Terminal mode working!'"
+Enter
+Sleep 1s
+
+Type "echo 'Testing vim primitives...'"
+Enter
+Sleep 0.5s
+
+# Create a test file using printf (avoids heredoc parsing issues)
+Run "printf '# Demo Python file\nimport os\nimport sys\n\ndef hello():\n    print(\"Hello World!\")\n\ndef add(a, b):\n    return a + b\n\nif __name__ == \"__main__\":\n    hello()\n' > /tmp/demo.py"
+Sleep 0.5s
+
+Run "cat /tmp/demo.py"
+Sleep 1s
+
+# Use vim primitives
+Open "/tmp/demo.py"
+Sleep 2s
+
+# Highlight the imports
+Highlight "2-3"
+Sleep 2s
+
+# Highlight the hello function
+Highlight "5-6"
+Sleep 2s
+
+# Highlight the add function  
+Highlight "8-9"
+Sleep 2s
+
+# Close vim
+Close
+Sleep 0.5s
+
+# Final message
+Type "echo 'Demo complete! JS extraction works.'"
+Enter
+Sleep 1s

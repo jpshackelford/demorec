@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demorec Demo - PR #2 Evidence</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { text-align: center; color: #00d4ff; margin-bottom: 0.5rem; }
+        .subtitle { text-align: center; color: #888; margin-bottom: 2rem; }
+        .video-container {
+            background: #0d1117;
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        video { width: 100%; border-radius: 8px; }
+        .info { background: #1e293b; border-radius: 8px; padding: 1.5rem; margin-top: 2rem; }
+        .info h2 { color: #00d4ff; margin-bottom: 1rem; font-size: 1.2rem; }
+        .info ul { list-style: none; }
+        .info li { padding: 0.5rem 0; border-bottom: 1px solid #334155; }
+        .info li:last-child { border-bottom: none; }
+        .check { color: #22c55e; margin-right: 0.5rem; }
+        code { background: #334155; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.9rem; }
+        .stats { display: flex; justify-content: center; gap: 2rem; margin-top: 1.5rem; }
+        .stat { text-align: center; }
+        .stat-value { font-size: 1.5rem; font-weight: bold; color: #00d4ff; }
+        .stat-label { font-size: 0.8rem; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Demorec Demo</h1>
+        <p class="subtitle">PR #2 Evidence - JS Extraction Verification</p>
+        
+        <div class="video-container">
+            <video controls autoplay muted loop>
+                <source src="https://github.com/jpshackelford/demorec/raw/docs/add-project-context/.pr/demo_video.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+        
+        <div class="info">
+            <h2>What This Demonstrates</h2>
+            <ul>
+                <li><span class="check">✓</span> Terminal mode with <code>@terminal:rows 30</code> directive</li>
+                <li><span class="check">✓</span> External JS file <code>terminal_resize.js</code> loading correctly</li>
+                <li><span class="check">✓</span> <code>initializeTerminal()</code> and <code>refineTerminalRows()</code> functions working</li>
+                <li><span class="check">✓</span> Vim primitives: <code>Open</code>, <code>Highlight</code>, <code>Close</code></li>
+                <li><span class="check">✓</span> Clean video start (setup frames trimmed)</li>
+                <li><span class="check">✓</span> xterm.js + ttyd integration intact</li>
+            </ul>
+            <div class="stats">
+                <div class="stat"><div class="stat-value">56</div><div class="stat-label">Unit Tests</div></div>
+                <div class="stat"><div class="stat-value">23</div><div class="stat-label">E2E Tests</div></div>
+                <div class="stat"><div class="stat-value">11</div><div class="stat-label">JS Tests</div></div>
+                <div class="stat"><div class="stat-value">39s</div><div class="stat-label">Video Length</div></div>
+            </div>
+        </div>
+        
+        <p style="text-align: center; margin-top: 2rem; color: #666;">
+            <a href="https://github.com/jpshackelford/demorec/pull/2" style="color: #00d4ff;">View PR #2</a>
+        </p>
+    </div>
+</body>
+</html>

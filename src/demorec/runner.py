@@ -67,6 +67,8 @@ class Runner:
         self.temp_dir = Path(tempfile.mkdtemp(prefix="demorec_"))
         self.segment_files: list[Path] = []
         self.timed_narrations: list[TimedNarration] = []  # All narrations with timing
+        # Map segment index -> {cmd_index -> TimedNarration}
+        self._segment_narrations: dict[int, dict[int, TimedNarration]] = {}
         self.has_narration = any(
             seg.narrations for seg in plan.segments
         )
@@ -93,7 +95,7 @@ class Runner:
                 )
                 
                 segment_file = self.temp_dir / f"segment_{i:03d}.mp4"
-                segment_duration = self._record_segment(segment, segment_file, time_offset)
+                segment_duration = self._record_segment(i, segment, segment_file, time_offset)
                 self.segment_files.append(segment_file)
                 time_offset += segment_duration
                 
@@ -148,17 +150,18 @@ class Runner:
                 )
                 self.timed_narrations.append(timed)
                 
-                # Also store in segment for recorder to access
-                if not hasattr(segment, 'timed_narrations'):
-                    segment.timed_narrations = {}
-                segment.timed_narrations[cmd_idx] = timed
+                # Store in segment narrations map (no monkey-patching)
+                if seg_idx not in self._segment_narrations:
+                    self._segment_narrations[seg_idx] = {}
+                self._segment_narrations[seg_idx][cmd_idx] = timed
                 
                 narration_idx += 1
     
-    def _record_segment(self, segment: Segment, output: Path, time_offset: float = 0.0) -> float:
+    def _record_segment(self, seg_idx: int, segment: Segment, output: Path, time_offset: float = 0.0) -> float:
         """Record a single segment.
         
         Args:
+            seg_idx: Index of this segment in the plan
             segment: The segment to record
             output: Output video file path
             time_offset: Starting time offset for this segment (for multi-segment timing)
@@ -167,7 +170,7 @@ class Runner:
             The duration of the recorded segment in seconds
         """
         # Get timed narrations for this segment (if any)
-        timed_narrations = getattr(segment, 'timed_narrations', {})
+        timed_narrations = self._segment_narrations.get(seg_idx, {})
         
         if segment.mode == "terminal":
             recorder = TerminalRecorder(

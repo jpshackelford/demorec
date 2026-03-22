@@ -149,204 +149,231 @@ class TerminalRecorder:
         
         return asyncio.run(self._record_async(segment, output))
     
-    async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
-        from playwright.async_api import async_playwright
-        import time
+    def _create_ttyd_env(self) -> dict:
+        """Create clean environment for ttyd subprocess.
         
-        # Track command timestamps
-        timestamps: dict[int, tuple[float, float]] = {}
-        
-        # Track when video recording starts vs when setup completes
-        video_start_time = None
-        setup_duration = 0.0
-        
-        # Process SetTheme commands first
-        for cmd in segment.commands:
-            if cmd.name == "SetTheme" and cmd.args:
-                theme_name = cmd.args[0].lower().replace(" ", "-")
-                if theme_name in THEMES:
-                    self.theme = theme_name
-        
-        # Find a free port for ttyd
-        port = _find_free_port()
-        
-        # Start ttyd with a clean shell environment
-        # Critical: Remove OpenHands PS1JSON artifacts by clearing PROMPT_COMMAND
-        # and setting a simple PS1
-        env = os.environ.copy()
-        env["TERM"] = "xterm-256color"
-        env["PS1"] = "$ "  # Simple prompt
-        env["PROMPT_COMMAND"] = ""  # Clear PROMPT_COMMAND that sets PS1JSON
-        
-        # Remove any other prompt-related variables that might interfere
-        for key in list(env.keys()):
-            if "PROMPT" in key and key != "PROMPT_COMMAND":
-                del env[key]
-        
-        # Start ttyd - we'll configure xterm.js via JavaScript after load
+        Uses explicit whitelist to avoid PS1JSON and other prompt artifacts.
+        """
+        # Start with minimal required environment
+        env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "HOME": os.environ.get("HOME", "/tmp"),
+            "TERM": "xterm-256color",
+            "PS1": "$ ",
+            "PROMPT_COMMAND": "",
+            "LANG": os.environ.get("LANG", "en_US.UTF-8"),
+        }
+        # Add SHELL if present
+        if "SHELL" in os.environ:
+            env["SHELL"] = os.environ["SHELL"]
+        return env
+    
+    def _start_ttyd(self, port: int, env: dict) -> subprocess.Popen:
+        """Start ttyd subprocess on the given port."""
         ttyd_cmd = [
             "ttyd",
             "--port", str(port),
-            "--writable",  # Allow input
-            "--once",  # Exit after one connection
+            "--writable",
+            "--once",
             "/bin/bash", "--norc", "--noprofile"
         ]
-        
-        self._ttyd_process = subprocess.Popen(
+        return subprocess.Popen(
             ttyd_cmd,
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+    
+    async def _initialize_terminal(self, page) -> dict | None:
+        """Initialize terminal with theme, fonts, and desired row count.
         
-        # Wait for ttyd to start
-        await asyncio.sleep(0.5)
+        Args:
+            page: Playwright page object connected to ttyd
+            
+        Returns:
+            Terminal size dict with rows, cols, fontSize, or None on failure
+        """
+        # Load terminal resize functions from external JS
+        await page.evaluate(TERMINAL_RESIZE_JS)
         
-        try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch()
-                context = await browser.new_context(
-                    viewport={"width": self.width, "height": self.height},
-                    device_scale_factor=1,  # Use 1:1 scale for accurate terminal sizing
-                    record_video_dir=str(output.parent),
-                    record_video_size={"width": self.width, "height": self.height},
-                )
-                page = await context.new_page()
-                
-                # Video recording starts now
-                video_start_time = time.time()
-                
-                # Navigate to ttyd
-                await page.goto(f"http://localhost:{port}", wait_until="networkidle")
-                
-                # Wait for terminal to be ready (ttyd creates window.term)
-                await page.wait_for_selector(".xterm-screen", timeout=10000)
-                await page.wait_for_function("() => window.term !== undefined", timeout=10000)
-                await asyncio.sleep(0.3)  # Let terminal fully initialize
-                
-                # Load terminal resize functions from external JS
-                await page.evaluate(TERMINAL_RESIZE_JS)
-                
-                # Initialize terminal with VHS-style setup
+        # Initialize terminal with VHS-style setup
+        term_size = await page.evaluate(
+            "config => initializeTerminal(config)",
+            {
+                "fontSize": self.font_size,
+                "fontFamily": self.font_family,
+                "lineHeight": self.line_height,
+                "theme": THEMES.get(self.theme),
+                "desiredRows": self.desired_rows
+            }
+        )
+        await asyncio.sleep(0.3)
+        
+        # If rows still don't match, do iterative refinement
+        if self.desired_rows and term_size and term_size['rows'] != self.desired_rows:
+            for _ in range(3):
                 term_size = await page.evaluate(
-                    "config => initializeTerminal(config)",
-                    {
-                        "fontSize": self.font_size,
-                        "fontFamily": self.font_family,
-                        "lineHeight": self.line_height,
-                        "theme": THEMES.get(self.theme),
-                        "desiredRows": self.desired_rows
-                    }
+                    "desiredRows => refineTerminalRows(desiredRows)",
+                    self.desired_rows
                 )
-                await asyncio.sleep(0.3)
-                
-                # If rows still don't match, do iterative refinement
-                if self.desired_rows and term_size and term_size['rows'] != self.desired_rows:
-                    for _ in range(3):  # Max 3 iterations
-                        term_size = await page.evaluate(
-                            "desiredRows => refineTerminalRows(desiredRows)",
-                            self.desired_rows
-                        )
-                        await asyncio.sleep(0.2)
-                        
-                        if term_size and term_size.get('done'):
-                            break
-                
-                # Wait for terminal to report stable dimensions before proceeding
-                await self._wait_for_terminal_ready(page, term_size)
-                
-                # Clear terminal for clean start (PTY is already synced via term.fit())
-                await page.keyboard.press("Control+l")
-                await asyncio.sleep(0.5)  # Wait for clear to render
-                
-                # Update vim expander with actual terminal rows
-                if term_size and term_size.get('rows'):
-                    self._vim_expander.set_terminal_rows(term_size['rows'])
-                
-                # Setup is complete - mark this time for video trimming
-                setup_duration = time.time() - video_start_time
-                
-                # Store page for command execution
-                self._page = page
-                
-                # Execute commands with shared timestamp tracking
-                timestamps = await execute_with_narration_timing(
-                    commands=segment.commands,
-                    timed_narrations=self._timed_narrations,
-                    execute_fn=self._execute_command,
-                )
-                
-                # Final pause
-                await asyncio.sleep(0.5)
-                
-                await context.close()
-                await browser.close()
-        finally:
-            # Clean up ttyd
-            if self._ttyd_process:
-                self._ttyd_process.terminate()
-                try:
-                    self._ttyd_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    self._ttyd_process.kill()
+                await asyncio.sleep(0.2)
+                if term_size and term_size.get('done'):
+                    break
         
-        # Convert video, trimming the setup portion
+        return term_size
+    
+    def _process_theme_commands(self, segment: Segment):
+        """Extract and apply SetTheme commands from segment."""
+        for cmd in segment.commands:
+            if cmd.name == "SetTheme" and cmd.args:
+                theme_name = cmd.args[0].lower().replace(" ", "-")
+                if theme_name in THEMES:
+                    self.theme = theme_name
+    
+    def _cleanup_ttyd(self):
+        """Terminate ttyd subprocess cleanly."""
+        if self._ttyd_process:
+            self._ttyd_process.terminate()
+            try:
+                self._ttyd_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self._ttyd_process.kill()
+            self._ttyd_process = None
+    
+    def _finalize_video(self, output: Path, setup_duration: float):
+        """Convert recorded webm to mp4, trimming setup frames."""
         video_files = list(output.parent.glob("*.webm"))
         if video_files:
             latest = max(video_files, key=lambda f: f.stat().st_mtime)
             self._convert_to_mp4(latest, output, trim_start=setup_duration)
             latest.unlink()
+    
+    async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
+        """Main async recording loop.
+        
+        Phases:
+        1. Setup: Start ttyd, launch browser, initialize terminal
+        2. Recording: Execute commands with timestamp tracking
+        3. Cleanup: Close browser, stop ttyd, convert video
+        """
+        from playwright.async_api import async_playwright
+        
+        timestamps: dict[int, tuple[float, float]] = {}
+        setup_duration = 0.0
+        
+        # Phase 1a: Process theme commands
+        self._process_theme_commands(segment)
+        
+        # Phase 1b: Start ttyd
+        port = _find_free_port()
+        env = self._create_ttyd_env()
+        self._ttyd_process = self._start_ttyd(port, env)
+        await asyncio.sleep(0.5)  # Wait for ttyd to start
+        
+        try:
+            async with async_playwright() as p:
+                # Phase 1c: Launch browser with video recording
+                browser = await p.chromium.launch()
+                context = await browser.new_context(
+                    viewport={"width": self.width, "height": self.height},
+                    device_scale_factor=1,
+                    record_video_dir=str(output.parent),
+                    record_video_size={"width": self.width, "height": self.height},
+                )
+                page = await context.new_page()
+                video_start_time = time.time()
+                
+                # Phase 1d: Connect to ttyd and wait for terminal
+                await page.goto(f"http://localhost:{port}", wait_until="networkidle")
+                await page.wait_for_selector(".xterm-screen", timeout=10000)
+                await page.wait_for_function("() => window.term !== undefined", timeout=10000)
+                await asyncio.sleep(0.3)
+                
+                # Phase 1e: Initialize terminal (theme, fonts, sizing)
+                term_size = await self._initialize_terminal(page)
+                await self._wait_for_terminal_ready(page, term_size)
+                
+                # Phase 1f: Clear terminal and finalize setup
+                await page.keyboard.press("Control+l")
+                await asyncio.sleep(0.5)
+                
+                if term_size and term_size.get('rows'):
+                    self._vim_expander.set_terminal_rows(term_size['rows'])
+                
+                setup_duration = time.time() - video_start_time
+                
+                # Phase 2: Execute commands
+                async def execute_cmd(cmd: Command):
+                    await self._execute_command(page, cmd)
+                
+                timestamps = await execute_with_narration_timing(
+                    commands=segment.commands,
+                    timed_narrations=self._timed_narrations,
+                    execute_fn=execute_cmd,
+                )
+                
+                await asyncio.sleep(0.5)  # Final pause
+                await context.close()
+                await browser.close()
+        finally:
+            # Phase 3a: Cleanup ttyd
+            self._cleanup_ttyd()
+        
+        # Phase 3b: Convert video
+        self._finalize_video(output, setup_duration)
         
         return timestamps
     
-    async def _send_keys(self, text: str, delay: float = None):
-        """Send keystrokes to the terminal."""
+    async def _send_keys(self, page, text: str, delay: float = None):
+        """Send keystrokes to the terminal.
+        
+        Args:
+            page: Playwright page object
+            text: Text to type
+            delay: Delay between keystrokes (defaults to self.typing_speed)
+        """
         if delay is None:
             delay = self.typing_speed
         
-        page = self._page
         for char in text:
             await page.keyboard.type(char, delay=0)
             if delay > 0:
                 await asyncio.sleep(delay)
     
-    async def _execute_command(self, cmd: Command):
-        """Execute a command in the real PTY."""
-        page = self._page
+    async def _execute_command(self, page, cmd: Command):
+        """Execute a single command in the terminal.
         
+        Args:
+            page: Playwright page object
+            cmd: Command to execute
+        """
         # Check for high-level vim commands first
         if self._vim_expander.is_vim_command(cmd.name):
             expanded = self._vim_expander.expand_command(cmd.name, cmd.args)
-            await self._execute_vim_sequence(expanded)
+            await self._execute_vim_sequence(page, expanded)
             return
         
         if cmd.name == "SetTheme":
-            pass  # Processed earlier (ttyd has its own theming)
+            pass  # Processed earlier
         
         elif cmd.name == "Type":
             if cmd.args:
-                text = cmd.args[0]
-                await self._send_keys(text)
+                await self._send_keys(page, cmd.args[0])
         
         elif cmd.name == "Enter":
             await page.keyboard.press("Enter")
-            await asyncio.sleep(0.3)  # Wait for command to process
+            await asyncio.sleep(0.3)
         
         elif cmd.name == "Run":
-            # Type command and execute
             if cmd.args:
-                command = cmd.args[0]
-                await self._send_keys(command)
+                await self._send_keys(page, cmd.args[0])
                 await page.keyboard.press("Enter")
-                
-                # Wait for output
                 wait_time = parse_time(cmd.args[1]) if len(cmd.args) > 1 else 1.0
                 await asyncio.sleep(wait_time)
         
         elif cmd.name == "Sleep":
             if cmd.args:
-                seconds = parse_time(cmd.args[0])
-                await asyncio.sleep(seconds)
+                await asyncio.sleep(parse_time(cmd.args[0]))
         
         elif cmd.name == "Ctrl+C":
             await page.keyboard.press("Control+c")
@@ -366,7 +393,7 @@ class TerminalRecorder:
         
         elif cmd.name == "Tab":
             await page.keyboard.press("Tab")
-            await asyncio.sleep(0.2)  # Wait for completion
+            await asyncio.sleep(0.2)
         
         elif cmd.name == "Up":
             await page.keyboard.press("ArrowUp")
@@ -455,14 +482,14 @@ class TerminalRecorder:
             last_size = current_size
             await asyncio.sleep(check_interval)
 
-    async def _execute_vim_sequence(self, commands: list[tuple[str, float]]):
+    async def _execute_vim_sequence(self, page, commands: list[tuple[str, float]]):
         """Execute a sequence of vim keystrokes.
         
         Args:
+            page: Playwright page object
             commands: List of (keys, delay_after) tuples
                      Special keys: "ENTER", "ESCAPE", "TAB"
         """
-        page = self._page
         for keys, delay in commands:
             if keys == "ENTER":
                 await page.keyboard.press("Enter")
@@ -472,7 +499,7 @@ class TerminalRecorder:
                 await page.keyboard.press("Tab")
             else:
                 # Regular text - type it character by character for visibility
-                await self._send_keys(keys, delay=0.02)
+                await self._send_keys(page, keys, delay=0.02)
             
             if delay > 0:
                 await asyncio.sleep(delay)

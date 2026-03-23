@@ -27,14 +27,24 @@ python scripts/check_function_length.py src/ --warn 8 --error 12
 src/demorec/
 ├── cli.py           # Click CLI (record, stage, preview, checkpoints)
 ├── parser.py        # .demorec script parsing
-├── runner.py        # Recording orchestration, audio mixing, SRT
+├── runner.py        # Recording orchestration
+├── audio.py         # FFmpeg audio mixing, SRT generation
 ├── tts.py           # Text-to-speech (edge-tts)
 ├── preview.py       # Checkpoint verification
 ├── stage.py         # Vim stage direction calculator
+├── checkpoints.py   # Checkpoint detection from commands
+├── ttyd.py          # ttyd process lifecycle management
+├── xterm.py         # xterm.js configuration wrapper
+├── js/              # Static JS assets for xterm.js
+│   ├── setup_terminal.js   # Full viewport + row targeting
+│   ├── fit_to_rows.js      # Iterative font adjustment
+│   ├── get_buffer_state.js # Buffer inspection
+│   └── setup_container.js  # Simple container setup
 └── modes/
-    ├── browser.py   # Browser recording (Playwright)
-    ├── terminal.py  # Terminal recording (ttyd)
-    └── vim.py       # Vim primitives (VimCommandExpander)
+    ├── browser.py           # Browser recording (Playwright)
+    ├── terminal.py          # Terminal recording (ttyd)
+    ├── terminal_commands.py # Command handlers + themes
+    └── vim.py               # Vim primitives (VimCommandExpander)
 ```
 
 ## Code Quality Thresholds

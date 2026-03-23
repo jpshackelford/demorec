@@ -12,8 +12,8 @@ Gradually tighten these as the codebase improves.
 | **Complexity (absolute)** | C (11-20) | C (11-20) | ✅ Enforced |
 | **Complexity (modules)** | A (1-5) | A (1-5) | ✅ Enforced |
 | **Complexity (average)** | A (1-5) | A (1-5) | ✅ Enforced |
-| **Function Length (warn)** | 20 lines | 8 lines | 🔄 Relaxed |
-| **Function Length (error)** | 65 lines | 12 lines | 🔄 Relaxed |
+| **Function Length (warn)** | 15 lines | 8 lines | ✅ Tightened |
+| **Function Length (error)** | 25 lines | 12 lines | ✅ Tightened |
 
 ## How to Tighten Thresholds
 
@@ -48,16 +48,16 @@ xenon --max-absolute C --max-modules A --max-average A src/demorec/
 
 **Fix high complexity:** Break complex functions into smaller, focused functions using dispatch tables or helper functions.
 
-### 3. Function Length
+### 3. Function Length ✅ Tightened
 
-**Current:**
-```yaml
-run: python scripts/check_function_length.py src/ --warn 20 --error 65
+Function length thresholds have been tightened:
+```bash
+python scripts/check_function_length.py src/ --warn 15 --error 25
 ```
 
-**Target:**
-```yaml
-run: python scripts/check_function_length.py src/ --warn 8 --error 12
+**Ultimate target** (not yet enforced):
+```bash
+python scripts/check_function_length.py src/ --warn 8 --error 12
 ```
 
 **Exemptions:** Add `# length-ok` comment on the `def` line to exempt specific functions:
@@ -67,11 +67,12 @@ def complex_but_necessary_function():  # length-ok
     ...
 ```
 
-## Recommended Approach
+## Refactoring Techniques Used
 
-1. **Phase 1:** Fix all lint/format issues (easiest - can be auto-fixed)
-2. **Phase 2:** Reduce function lengths (refactor large functions)
-3. **Phase 3:** Reduce complexity (extract helper functions, simplify logic)
+1. **Dispatch tables**: Replace long if/elif chains with dictionaries mapping commands to handler functions
+2. **Extract helper functions**: Break large functions into smaller focused helpers
+3. **Class-based state**: Use classes like `_Tokenizer` to manage complex parsing state
+4. **Phase-based methods**: Split pipeline functions like `run()` into `_run_*_phase()` methods
 
 ## Tracking Progress
 

@@ -93,13 +93,12 @@ class ElevenLabsTTS:
         voice_lower = voice.lower()
         self.voice_id = self.VOICES.get(voice_lower, voice if len(voice) > 10 else default_voice)
 
-    def synthesize(self, text: str, output_path: Path) -> None:
-        """Synthesize speech using ElevenLabs API."""
+    def _build_request(self, text: str):
+        """Build the API request for text-to-speech."""
         import json
         import urllib.request
 
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}"
-
         payload = json.dumps(
             {
                 "text": text,
@@ -107,18 +106,20 @@ class ElevenLabsTTS:
                 "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
             }
         ).encode("utf-8")
-
         headers = {
             "Accept": "audio/mpeg",
             "Content-Type": "application/json",
             "xi-api-key": self.api_key,
         }
+        return urllib.request.Request(url, data=payload, headers=headers, method="POST")
 
-        req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+    def synthesize(self, text: str, output_path: Path) -> None:
+        """Synthesize speech using ElevenLabs API."""
+        import urllib.request
 
+        req = self._build_request(text)
         with urllib.request.urlopen(req) as response:
-            with open(output_path, "wb") as f:
-                f.write(response.read())
+            output_path.write_bytes(response.read())
 
 
 def get_tts_engine(voice: str | None) -> TTSEngine:

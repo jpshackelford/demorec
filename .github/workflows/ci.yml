@@ -113,12 +113,9 @@ jobs:
           python-version: "3.12"
 
       - name: Check function length
-        # TODO: Tighten thresholds as code is refactored
-        # CURRENT: --warn 20 --error 65 (relaxed for initial adoption)
-        # TARGET:  --warn 8 --error 12 (strict - encourages small functions)
-        #
+        # Thresholds: warn at 15 lines, error at 25 lines
         # Use "# length-ok" comment on def line to exempt specific functions
-        run: python scripts/check_function_length.py src/ --warn 20 --error 65
+        run: python scripts/check_function_length.py src/ --warn 15 --error 25
 
   quality-report:
     name: Quality Report

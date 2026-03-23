@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 from ..parser import Command, Segment, parse_time
+from . import convert_webm_to_mp4
 
 
 def _find_free_port() -> int:
@@ -234,32 +235,26 @@ class TerminalRecorder:
 
         asyncio.run(self._record_async(segment, output))
 
-    async def _record_async(self, segment: Segment, output: Path):
-        from playwright.async_api import async_playwright
-
-        # Process SetTheme commands first
+    def _apply_theme_from_segment(self, segment: Segment):
+        """Apply theme settings from segment commands."""
         for cmd in segment.commands:
             if cmd.name == "SetTheme" and cmd.args:
                 theme_name = cmd.args[0].lower().replace(" ", "-")
                 if theme_name in THEMES:
                     self.theme = theme_name
 
-        # Find a free port for ttyd
-        port = _find_free_port()
-
-        # Start ttyd with a clean shell
+    def _start_ttyd(self, port: int):
+        """Start ttyd process on the given port."""
         env = os.environ.copy()
         env["TERM"] = "xterm-256color"
-        env["PS1"] = "$ "  # Simple prompt
-
-        # Start ttyd
+        env["PS1"] = "$ "
         self._ttyd_process = subprocess.Popen(
             [
                 "ttyd",
                 "--port",
                 str(port),
-                "--writable",  # Allow input
-                "--once",  # Exit after one connection
+                "--writable",
+                "--once",
                 "/bin/bash",
                 "--norc",
                 "--noprofile",
@@ -269,57 +264,65 @@ class TerminalRecorder:
             stderr=subprocess.DEVNULL,
         )
 
-        # Wait for ttyd to start
-        await asyncio.sleep(0.5)
+    def _cleanup_ttyd(self):
+        """Terminate the ttyd process."""
+        if self._ttyd_process:
+            self._ttyd_process.terminate()
+            try:
+                self._ttyd_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self._ttyd_process.kill()
 
-        try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch()
-                context = await browser.new_context(
-                    viewport={"width": self.width, "height": self.height},
-                    device_scale_factor=2,
-                    record_video_dir=str(output.parent),
-                    record_video_size={"width": self.width, "height": self.height},
-                )
-                page = await context.new_page()
+    async def _run_browser_session(self, segment: Segment, output: Path, port: int):
+        """Run the Playwright browser session to record commands."""
+        from playwright.async_api import async_playwright
 
-                # Navigate to ttyd
-                await page.goto(f"http://localhost:{port}", wait_until="networkidle")
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            context = await browser.new_context(
+                viewport={"width": self.width, "height": self.height},
+                device_scale_factor=2,
+                record_video_dir=str(output.parent),
+                record_video_size={"width": self.width, "height": self.height},
+            )
+            page = await context.new_page()
+            await page.goto(f"http://localhost:{port}", wait_until="networkidle")
+            await page.wait_for_selector(".xterm-screen", timeout=10000)
+            await asyncio.sleep(1.0)
 
-                # Wait for terminal to be ready (ttyd creates #terminal-container with xterm)
-                await page.wait_for_selector(".xterm-screen", timeout=10000)
-                await asyncio.sleep(1.0)  # Let terminal fully initialize
+            for cmd in segment.commands:
+                await self._execute_command(page, cmd)
 
-                # Execute commands
-                for cmd in segment.commands:
-                    await self._execute_command(page, cmd)
+            await asyncio.sleep(0.5)
+            await context.close()
+            await browser.close()
 
-                # Final pause
-                await asyncio.sleep(0.5)
-
-                await context.close()
-                await browser.close()
-        finally:
-            # Clean up ttyd
-            if self._ttyd_process:
-                self._ttyd_process.terminate()
-                try:
-                    self._ttyd_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    self._ttyd_process.kill()
-
-        # Convert video
+    def _finalize_video(self, output: Path):
+        """Find and convert the recorded video."""
         video_files = list(output.parent.glob("*.webm"))
         if video_files:
             latest = max(video_files, key=lambda f: f.stat().st_mtime)
-            self._convert_to_mp4(latest, output)
+            convert_webm_to_mp4(latest, output)
             latest.unlink()
+
+    async def _record_async(self, segment: Segment, output: Path):
+        """Record terminal session using ttyd and Playwright."""
+        self._apply_theme_from_segment(segment)
+        port = _find_free_port()
+        self._start_ttyd(port)
+        await asyncio.sleep(0.5)
+
+        try:
+            await self._run_browser_session(segment, output, port)
+        finally:
+            self._cleanup_ttyd()
+
+        self._finalize_video(output)
 
     async def _send_keys(self, page, text: str, delay: float = None):
         """Send keystrokes to the terminal."""
         if delay is None:
             delay = self.typing_speed
-
         for char in text:
             await page.keyboard.type(char, delay=0)
             if delay > 0:
@@ -330,24 +333,3 @@ class TerminalRecorder:
         handler = TERMINAL_COMMANDS.get(cmd.name)
         if handler:
             await handler(self, page, cmd)
-
-    def _convert_to_mp4(self, webm_path: Path, mp4_path: Path):
-        """Convert webm to mp4 using FFmpeg."""
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(webm_path),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "22",
-            "-pix_fmt",
-            "yuv420p",
-            str(mp4_path),
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"FFmpeg conversion failed: {result.stderr}")

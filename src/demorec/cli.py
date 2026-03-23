@@ -9,6 +9,17 @@ from rich.console import Console
 from . import __version__
 from .parser import Plan, parse_script
 from .runner import Runner
+from .stage import (
+    parse_highlights,
+    calculate_stage_directions,
+    format_directions_text,
+    format_directions_json,
+    format_directions_demorec,
+    detect_checkpoints,
+    format_checkpoints_text,
+    format_checkpoints_json,
+)
+from .preview import TerminalPreviewer
 
 console = Console()
 
@@ -128,6 +139,171 @@ def install():
         console.print("[bold red]✗[/] Installation failed")
         console.print(result.stderr)
         raise SystemExit(1)
+
+
+@main.command()
+@click.option("--rows", "-r", type=int, required=True, help="Terminal rows")
+@click.option("--highlights", "-h", type=str, required=True,
+              help="Line ranges to highlight (e.g., '6-7,11-16,26-34')")
+@click.option("--format", "-f", "output_format", type=click.Choice(["text", "json", "demorec"]),
+              default="text", help="Output format")
+def stage(rows: int, highlights: str, output_format: str):
+    """Calculate vim stage directions for highlighting code blocks.
+
+    Given terminal dimensions and line ranges to highlight, outputs
+    the optimal vim commands for scrolling and selecting each block.
+
+    Examples:
+
+        demorec stage --rows 30 --highlights "6-7,11-16,26-34"
+
+        demorec stage -r 30 -h "10-20,45-60" --format json
+
+        demorec stage -r 30 -h "1-10,50-60" --format demorec
+    """
+    try:
+        blocks = parse_highlights(highlights)
+    except ValueError as e:
+        console.print(f"[bold red]Error parsing highlights:[/] {e}")
+        console.print("Expected format: '6-7,11-16,26-34' (comma-separated line ranges)")
+        raise SystemExit(1)
+
+    directions = calculate_stage_directions(rows, blocks)
+
+    if output_format == "json":
+        print(format_directions_json(directions, rows))
+    elif output_format == "demorec":
+        print(format_directions_demorec(directions))
+    else:
+        print(format_directions_text(directions, rows))
+
+
+@main.command()
+@click.argument("script", type=click.Path(exists=True, path_type=Path))
+@click.option("--format", "-f", "output_format", type=click.Choice(["text", "json"]),
+              default="text", help="Output format")
+def checkpoints(script: Path, output_format: str):
+    """Detect natural checkpoint locations in a script.
+
+    Automatically identifies "show moments" where verification is useful:
+
+    \b
+    - Visual selections (V...G patterns) - highlighted code should be visible
+    - Narration points (@narrate:after) - narrated content should be on screen
+    - File opens (vim + Enter) - file should be loaded
+
+    Examples:
+
+        demorec checkpoints examples/vim_demo.demorec
+
+        demorec checkpoints script.demorec --format json
+    """
+    console.print(f"[bold blue]demorec[/] checkpoints")
+    console.print(f"[dim]Analyzing:[/] {script}\n")
+
+    detected = detect_checkpoints(script)
+
+    if output_format == "json":
+        print(format_checkpoints_json(detected))
+    else:
+        print(format_checkpoints_text(detected))
+
+
+@main.command()
+@click.argument("script", type=click.Path(exists=True, path_type=Path))
+@click.option("--rows", "-r", type=int, default=30, help="Terminal rows (default: 30)")
+@click.option("--screenshots/--no-screenshots", default=None,
+              help="Always/never capture screenshots (default: on error only)")
+@click.option("--output-dir", "-o", type=click.Path(path_type=Path),
+              help="Directory for screenshots (default: .demorec_preview)")
+def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path | None):
+    """Preview a script and verify checkpoints.
+
+    Runs through the script, automatically detecting "show moments" and
+    verifying that expected content is visible at each checkpoint.
+
+    \b
+    Screenshot behavior:
+      (default)        Screenshots only on errors
+      --screenshots    Always capture screenshots
+      --no-screenshots Never capture screenshots
+
+    Examples:
+
+        demorec preview script.demorec --rows 30
+
+        demorec preview script.demorec --screenshots
+
+        demorec preview script.demorec --no-screenshots
+    """
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+
+    console.print(f"[bold blue]demorec[/] preview")
+    console.print(f"[dim]Script:[/] {script}")
+    console.print(f"[dim]Terminal:[/] {rows} rows")
+
+    try:
+        plan = parse_script(script)
+    except Exception as e:
+        console.print(f"[bold red]Parse error:[/] {e}")
+        raise SystemExit(1)
+
+    terminal_segments = [s for s in plan.segments if s.mode == "terminal" and s.commands]
+    if not terminal_segments:
+        console.print("[bold red]Error:[/] No terminal segments with commands found in script")
+        raise SystemExit(1)
+
+    segment = terminal_segments[0]
+
+    if screenshots is True:
+        screenshot_mode = "always"
+    elif screenshots is False:
+        screenshot_mode = "never"
+    else:
+        screenshot_mode = "on_error"
+
+    console.print(f"[dim]Screenshots:[/] {screenshot_mode}")
+    console.print()
+
+    previewer = TerminalPreviewer(rows=rows, screenshots=screenshot_mode)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        progress.add_task("Running preview...", total=None)
+
+        try:
+            result = previewer.preview(script, segment, output_dir)
+        except Exception as e:
+            console.print(f"[bold red]Preview error:[/] {e}")
+            raise SystemExit(1)
+
+    console.print()
+
+    for i, r in enumerate(result.results, 1):
+        status = "[bold green]✓[/]" if r.passed else "[bold red]✗[/]"
+        console.print(f"{status} Checkpoint {i} (line {r.checkpoint.line_number}): ", end="")
+        console.print("[green]PASS[/]" if r.passed else "[red]FAIL[/]")
+
+        if r.expected_lines:
+            console.print(f"    Expected: lines {r.expected_lines[0]}-{r.expected_lines[1]}")
+        if r.visible_lines:
+            console.print(f"    Visible:  lines {r.visible_lines[0]}-{r.visible_lines[1]}")
+        if r.error_message:
+            console.print(f"    [red]Error: {r.error_message}[/]")
+        if r.screenshot_path:
+            console.print(f"    Screenshot: {r.screenshot_path}")
+        console.print()
+
+    if result.failed > 0:
+        console.print(f"[bold red]Summary: {result.passed}/{result.total} passed, {result.failed} failed[/]")
+        if result.screenshot_dir:
+            console.print(f"[dim]Screenshots saved to: {result.screenshot_dir}[/]")
+        raise SystemExit(1)
+    else:
+        console.print(f"[bold green]Summary: {result.passed}/{result.total} passed[/]")
 
 
 if __name__ == "__main__":

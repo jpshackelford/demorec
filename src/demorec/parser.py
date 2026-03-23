@@ -36,6 +36,9 @@ class Segment:
     mode: Literal["terminal", "browser"]
     commands: list[Command] = field(default_factory=list)
     narrations: dict[int, Narration] = field(default_factory=dict)  # command_index -> narration
+    # Terminal-specific settings
+    size: Literal["large", "medium", "small", "tiny"] | None = None  # Display size preset
+    rows: int | None = None  # Explicit row count (overrides size preset)
 
 
 @dataclass
@@ -194,6 +197,36 @@ def _handle_mode_switch(args: list[str], ctx: _ParseContext):
         ctx.plan.segments.append(ctx.current_segment)
 
 
+def _handle_terminal_directive(directive: str, args: list[str], ctx: _ParseContext) -> bool:
+    """Handle @terminal:size and @terminal:rows directives. Returns True if handled."""
+    # @terminal:size large|medium|small|tiny (preset)
+    if directive == "size" and args:
+        size = args[0].lower()
+        if size in ("large", "medium", "small", "tiny"):
+            if ctx.current_segment and ctx.current_segment.mode == "terminal":
+                ctx.current_segment.size = size
+            elif ctx.current_segment is None:
+                ctx.current_segment = Segment(mode="terminal", size=size)
+                ctx.plan.segments.append(ctx.current_segment)
+        return True
+
+    # @terminal:rows N (explicit row count)
+    if directive == "rows" and args:
+        try:
+            rows = int(args[0])
+            if 10 <= rows <= 100:  # Reasonable bounds
+                if ctx.current_segment and ctx.current_segment.mode == "terminal":
+                    ctx.current_segment.rows = rows
+                elif ctx.current_segment is None:
+                    ctx.current_segment = Segment(mode="terminal", rows=rows)
+                    ctx.plan.segments.append(ctx.current_segment)
+        except ValueError:
+            pass  # Invalid row count, ignore
+        return True
+
+    return False
+
+
 def _ensure_segment(ctx: _ParseContext):
     """Ensure there's an active segment, defaulting to terminal."""
     if ctx.current_segment is None:
@@ -241,6 +274,9 @@ def parse_script(path: Path) -> Plan:
             _handle_set_directive(cmd_args, line_num, ctx)
         elif cmd_name == "@mode":
             _handle_mode_switch(cmd_args, ctx)
+        elif cmd_name.startswith("@terminal:"):
+            directive = cmd_name.split(":", 1)[1].lower()
+            _handle_terminal_directive(directive, cmd_args, ctx)
         else:
             _add_command(cmd_name, cmd_args, line_num, ctx)
 

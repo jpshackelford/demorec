@@ -32,11 +32,15 @@ jobs:
           pip install ruff
 
       - name: Run Ruff linter
-        # Show issues but don't fail build initially (remove || true to enforce)
+        # TODO: Remove "|| true" to enforce linting
+        # CURRENT: non-blocking (warnings only)
+        # TARGET:  ruff check src/
         run: ruff check src/ || true
 
       - name: Run Ruff formatter check
-        # Show issues but don't fail build initially (remove || true to enforce)
+        # TODO: Remove "|| true" to enforce formatting
+        # CURRENT: non-blocking (warnings only)
+        # TARGET:  ruff format --check src/
         run: ruff format --check src/ || true
 
   test:
@@ -97,9 +101,11 @@ jobs:
           pip install radon xenon
 
       - name: Check cyclomatic complexity (xenon)
-        # D = max absolute complexity allowed (relaxed for initial adoption)
-        # B = max module complexity
-        # B = max average complexity
+        # TODO: Tighten thresholds as code is refactored
+        # CURRENT: --max-absolute D --max-modules B --max-average B (relaxed)
+        # TARGET:  --max-absolute C --max-modules A --max-average A (strict)
+        #
+        # Grades: A=1-5, B=6-10, C=11-20, D=21-30, E=31-40, F=41+
         run: xenon --max-absolute D --max-modules B --max-average B src/demorec/
 
       - name: Show complexity metrics (radon)
@@ -117,7 +123,11 @@ jobs:
           python-version: "3.12"
 
       - name: Check function length
-        # Relaxed thresholds for initial adoption: warn at 20, error at 65
+        # TODO: Tighten thresholds as code is refactored
+        # CURRENT: --warn 20 --error 65 (relaxed for initial adoption)
+        # TARGET:  --warn 8 --error 12 (strict - encourages small functions)
+        #
+        # Use "# length-ok" comment on def line to exempt specific functions
         run: python scripts/check_function_length.py src/ --warn 20 --error 65
 
   quality-report:

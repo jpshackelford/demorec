@@ -9,10 +9,11 @@ from typing import Literal
 @dataclass
 class Command:
     """A single command in the script."""
+
     name: str
     args: list[str] = field(default_factory=list)
     line_num: int = 0
-    
+
     def __repr__(self):
         if self.args:
             return f"{self.name} {' '.join(repr(a) for a in self.args)}"
@@ -22,14 +23,16 @@ class Command:
 @dataclass
 class Narration:
     """A narration directive."""
+
     mode: Literal["before", "during", "after"]
     text: str
     line_num: int = 0
 
 
-@dataclass 
+@dataclass
 class Segment:
     """A segment of commands in a single mode."""
+
     mode: Literal["terminal", "browser"]
     commands: list[Command] = field(default_factory=list)
     narrations: dict[int, Narration] = field(default_factory=dict)  # command_index -> narration
@@ -38,6 +41,7 @@ class Segment:
 @dataclass
 class Plan:
     """The complete execution plan for a script."""
+
     output: Path = field(default_factory=lambda: Path("output.mp4"))
     width: int = 1280
     height: int = 720
@@ -80,11 +84,11 @@ def tokenize_line(line: str) -> list[str]:
     current = ""
     in_quotes = False
     quote_char = None
-    
+
     i = 0
     while i < len(line):
         c = line[i]
-        
+
         if in_quotes:
             if c == "\\" and i + 1 < len(line):
                 current += c + line[i + 1]
@@ -112,10 +116,10 @@ def tokenize_line(line: str) -> list[str]:
             else:
                 current += c
         i += 1
-    
+
     if current:
         tokens.append(current)
-    
+
     return tokens
 
 
@@ -124,17 +128,17 @@ def parse_script(path: Path) -> Plan:
     plan = Plan()
     current_segment: Segment | None = None
     pending_narration: Narration | None = None
-    
+
     with open(path) as f:
         lines = f.readlines()
-    
+
     for line_num, line in enumerate(lines, 1):
         line = line.strip()
-        
+
         # Skip empty lines
         if not line:
             continue
-        
+
         # Handle narration comments: # @narrate:before "text"
         if line.startswith("#"):
             narrate_match = re.match(r"#\s*@narrate:(before|during|after)\s+(.+)", line)
@@ -143,30 +147,30 @@ def parse_script(path: Path) -> Plan:
                 text = parse_string(narrate_match.group(2).strip())
                 pending_narration = Narration(mode=mode, text=text, line_num=line_num)
                 continue
-            
+
             # Handle voice directive: # @voice eleven:rachel
             voice_match = re.match(r"#\s*@voice\s+(\S+)", line)
             if voice_match:
                 plan.voice = voice_match.group(1)
                 continue
-            
+
             # Regular comment - skip
             continue
-        
+
         # Tokenize the line
         tokens = tokenize_line(line)
         if not tokens:
             continue
-        
+
         cmd_name = tokens[0]
         cmd_args = [parse_string(t) for t in tokens[1:]]
-        
+
         # Handle global directives
         if cmd_name == "Output":
             if cmd_args:
                 plan.output = Path(cmd_args[0])
             continue
-        
+
         if cmd_name == "Set":
             if len(cmd_args) >= 2:
                 key = cmd_args[0].lower()
@@ -181,7 +185,7 @@ def parse_script(path: Path) -> Plan:
                     # Theme is segment-specific for terminal
                     current_segment.commands.append(Command("SetTheme", [val], line_num))
             continue
-        
+
         # Handle mode switch
         if cmd_name == "@mode":
             if cmd_args:
@@ -190,21 +194,21 @@ def parse_script(path: Path) -> Plan:
                     current_segment = Segment(mode=mode)
                     plan.segments.append(current_segment)
             continue
-        
+
         # All other commands require an active segment
         if current_segment is None:
             # Default to terminal mode
             current_segment = Segment(mode="terminal")
             plan.segments.append(current_segment)
-        
+
         # Create the command
         cmd = Command(name=cmd_name, args=cmd_args, line_num=line_num)
         cmd_index = len(current_segment.commands)
         current_segment.commands.append(cmd)
-        
+
         # Attach pending narration to this command
         if pending_narration:
             current_segment.narrations[cmd_index] = pending_narration
             pending_narration = None
-    
+
     return plan

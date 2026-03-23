@@ -32,16 +32,10 @@ jobs:
           pip install ruff
 
       - name: Run Ruff linter
-        # TODO: Remove "|| true" to enforce linting
-        # CURRENT: non-blocking (warnings only)
-        # TARGET:  ruff check src/
-        run: ruff check src/ || true
+        run: ruff check src/
 
       - name: Run Ruff formatter check
-        # TODO: Remove "|| true" to enforce formatting
-        # CURRENT: non-blocking (warnings only)
-        # TARGET:  ruff format --check src/
-        run: ruff format --check src/ || true
+        run: ruff format --check src/
 
   test:
     name: Test (Python ${{ matrix.python-version }})

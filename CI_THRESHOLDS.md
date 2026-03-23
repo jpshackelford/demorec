@@ -1,38 +1,31 @@
 # CI Quality Thresholds
 
 This document tracks the current and target CI thresholds for code quality checks.
-The CI was initially configured with relaxed thresholds to pass on existing code.
 Gradually tighten these as the codebase improves.
 
 ## Current vs Target Thresholds
 
-| Check | Current (Relaxed) | Target (Strict) | File to Edit |
-|-------|-------------------|-----------------|--------------|
-| **Lint** | Non-blocking (`\|\| true`) | Blocking | `.github/workflows/ci.yml` |
-| **Format** | Non-blocking (`\|\| true`) | Blocking | `.github/workflows/ci.yml` |
-| **Complexity (absolute)** | D (21-30) | C (11-20) | `.github/workflows/ci.yml` |
-| **Complexity (modules)** | B (6-10) | A (1-5) | `.github/workflows/ci.yml` |
-| **Complexity (average)** | B (6-10) | A (1-5) | `.github/workflows/ci.yml` |
-| **Function Length (warn)** | 20 lines | 8 lines | `.github/workflows/ci.yml` |
-| **Function Length (error)** | 65 lines | 12 lines | `.github/workflows/ci.yml` |
+| Check | Current | Target (Strict) | Status |
+|-------|---------|-----------------|--------|
+| **Lint** | Blocking | Blocking | ✅ Enforced |
+| **Format** | Blocking | Blocking | ✅ Enforced |
+| **Complexity (absolute)** | D (21-30) | C (11-20) | 🔄 Relaxed |
+| **Complexity (modules)** | B (6-10) | A (1-5) | 🔄 Relaxed |
+| **Complexity (average)** | B (6-10) | A (1-5) | 🔄 Relaxed |
+| **Function Length (warn)** | 20 lines | 8 lines | 🔄 Relaxed |
+| **Function Length (error)** | 65 lines | 12 lines | 🔄 Relaxed |
 
 ## How to Tighten Thresholds
 
-### 1. Lint (Ruff)
+### 1. Lint (Ruff) ✅ Enforced
 
-**Current:**
-```yaml
-run: ruff check src/ || true
-run: ruff format --check src/ || true
+Lint and format checks are now blocking. All code must pass:
+```bash
+ruff check src/            # Linting
+ruff format --check src/   # Formatting
 ```
 
-**Target:**
-```yaml
-run: ruff check src/
-run: ruff format --check src/
-```
-
-**Fix existing issues:**
+**Fix issues:**
 ```bash
 ruff check src/ --fix      # Auto-fix linting issues
 ruff format src/           # Auto-format code

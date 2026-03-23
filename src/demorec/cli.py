@@ -1,15 +1,50 @@
 """Command-line interface for demorec."""
 
+import subprocess
 from pathlib import Path
 
 import click
 from rich.console import Console
 
 from . import __version__
-from .parser import parse_script
+from .parser import Plan, parse_script
 from .runner import Runner
 
 console = Console()
+
+# Voice configuration data
+EDGE_VOICES = {
+    "jenny": "Female, US",
+    "guy": "Male, US",
+    "aria": "Female, US",
+    "davis": "Male, US",
+    "emma": "Female, US",
+    "brian": "Male, US",
+    "sonia": "Female, UK",
+    "ryan": "Male, UK",
+    "natasha": "Female, AU",
+    "william": "Male, AU",
+}
+ELEVEN_VOICES = ["rachel", "adam", "josh", "bella", "sam"]
+
+
+def _print_plan_summary(plan: Plan):
+    """Print summary of parsed plan."""
+    console.print(f"[dim]Output:[/] {plan.output}")
+    console.print(f"[dim]Segments:[/] {len(plan.segments)}")
+    for i, seg in enumerate(plan.segments):
+        console.print(f"  [cyan]{i + 1}.[/] {seg.mode} ({len(seg.commands)} commands)")
+
+
+def _run_recording(plan: Plan):
+    """Execute the recording and handle errors."""
+    runner = Runner(plan)
+    try:
+        runner.run()
+        console.print(f"\n[bold green]✓[/] Saved to {plan.output}")
+    except Exception as e:
+        console.print(f"[bold red]Recording error:[/] {e}")
+        raise SystemExit(1)
 
 
 @click.group()
@@ -31,37 +66,24 @@ def record(script: Path, output: Path | None, voice: str | None, dry_run: bool):
     console.print(f"[bold blue]demorec[/] v{__version__}")
     console.print(f"[dim]Recording:[/] {script}")
 
-    # Parse the script
     try:
         plan = parse_script(script)
     except Exception as e:
         console.print(f"[bold red]Parse error:[/] {e}")
         raise SystemExit(1)
 
-    # Override settings from CLI
     if output:
         plan.output = output
     if voice:
         plan.voice = voice
 
-    console.print(f"[dim]Output:[/] {plan.output}")
-    console.print(f"[dim]Segments:[/] {len(plan.segments)}")
-
-    for i, seg in enumerate(plan.segments):
-        console.print(f"  [cyan]{i + 1}.[/] {seg.mode} ({len(seg.commands)} commands)")
+    _print_plan_summary(plan)
 
     if dry_run:
         console.print("\n[yellow]Dry run - not recording[/]")
         return
 
-    # Run the recording
-    runner = Runner(plan)
-    try:
-        runner.run()
-        console.print(f"\n[bold green]✓[/] Saved to {plan.output}")
-    except Exception as e:
-        console.print(f"[bold red]Recording error:[/] {e}")
-        raise SystemExit(1)
+    _run_recording(plan)
 
 
 @main.command()
@@ -86,39 +108,20 @@ def validate(script: Path):
 def voices():
     """List available TTS voices."""
     console.print("[bold blue]demorec[/] voices\n")
-
     console.print("[bold green]Microsoft Edge TTS[/] (free, high quality - recommended)")
-    edge_voices = {
-        "jenny": "Female, US",
-        "guy": "Male, US",
-        "aria": "Female, US",
-        "davis": "Male, US",
-        "emma": "Female, US",
-        "brian": "Male, US",
-        "sonia": "Female, UK",
-        "ryan": "Male, UK",
-        "natasha": "Female, AU",
-        "william": "Male, AU",
-    }
-    for name, desc in edge_voices.items():
+    for name, desc in EDGE_VOICES.items():
         console.print(f"  edge:{name:12} [dim]{desc}[/]")
-
     console.print("\n[bold yellow]ElevenLabs[/] (requires paid API subscription)")
-    eleven_voices = ["rachel", "adam", "josh", "bella", "sam"]
-    for v in eleven_voices:
+    for v in ELEVEN_VOICES:
         console.print(f"  eleven:{v}")
 
 
 @main.command()
 def install():
     """Install browser dependencies (Playwright)."""
-    import subprocess
-
     console.print("[bold blue]demorec[/] install")
     console.print("Installing Playwright browsers...")
-
     result = subprocess.run(["playwright", "install", "chromium"], capture_output=True, text=True)
-
     if result.returncode == 0:
         console.print("[bold green]✓[/] Browsers installed")
     else:

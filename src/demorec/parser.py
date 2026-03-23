@@ -78,49 +78,71 @@ def parse_string(s: str) -> str:
     return s
 
 
+class _Tokenizer:
+    """Stateful tokenizer for parsing lines with quoted strings."""
+
+    def __init__(self, line: str):
+        self.line = line
+        self.tokens: list[str] = []
+        self.current = ""
+        self.in_quotes = False
+        self.quote_char: str | None = None
+        self.i = 0
+
+    def _handle_escape(self) -> bool:
+        """Handle escape sequence. Returns True if processed."""
+        if self.line[self.i] == "\\" and self.i + 1 < len(self.line):
+            self.current += self.line[self.i : self.i + 2]
+            self.i += 2
+            return True
+        return False
+
+    def _close_quote(self):
+        """Close current quoted string."""
+        self.current += self.line[self.i]
+        self.tokens.append(self.current)
+        self.current = ""
+        self.in_quotes = False
+
+    def _open_quote(self, char: str):
+        """Start a new quoted string."""
+        if self.current:
+            self.tokens.append(self.current)
+        self.current = char
+        self.in_quotes = True
+        self.quote_char = char
+
+    def _flush_token(self):
+        """Flush current token if non-empty."""
+        if self.current:
+            self.tokens.append(self.current)
+            self.current = ""
+
+    def tokenize(self) -> list[str]:
+        """Tokenize the line and return list of tokens."""
+        while self.i < len(self.line):
+            c = self.line[self.i]
+            if self.in_quotes:
+                if self._handle_escape():
+                    continue
+                elif c == self.quote_char:
+                    self._close_quote()
+                else:
+                    self.current += c
+            elif c in ('"', "'"):
+                self._open_quote(c)
+            elif c.isspace():
+                self._flush_token()
+            else:
+                self.current += c
+            self.i += 1
+        self._flush_token()
+        return self.tokens
+
+
 def tokenize_line(line: str) -> list[str]:
     """Split a line into tokens, respecting quoted strings."""
-    tokens = []
-    current = ""
-    in_quotes = False
-    quote_char = None
-
-    i = 0
-    while i < len(line):
-        c = line[i]
-
-        if in_quotes:
-            if c == "\\" and i + 1 < len(line):
-                current += c + line[i + 1]
-                i += 2
-                continue
-            elif c == quote_char:
-                current += c
-                tokens.append(current)
-                current = ""
-                in_quotes = False
-            else:
-                current += c
-        else:
-            if c in ('"', "'"):
-                if current:
-                    tokens.append(current)
-                    current = ""
-                current = c
-                in_quotes = True
-                quote_char = c
-            elif c.isspace():
-                if current:
-                    tokens.append(current)
-                    current = ""
-            else:
-                current += c
-        i += 1
-
-    if current:
-        tokens.append(current)
-
-    return tokens
+    return _Tokenizer(line).tokenize()
 
 
 @dataclass

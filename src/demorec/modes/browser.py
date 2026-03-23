@@ -2,10 +2,10 @@
 
 import asyncio
 import json
-import subprocess
 from pathlib import Path
 
 from ..parser import Command, Segment, parse_time
+from . import convert_webm_to_mp4
 
 
 async def _cmd_navigate(page, cmd: Command):
@@ -142,7 +142,7 @@ class BrowserRecorder:
         video_files = list(output.parent.glob("*.webm"))
         if video_files:
             latest = max(video_files, key=lambda f: f.stat().st_mtime)
-            self._convert_to_mp4(latest, output)
+            convert_webm_to_mp4(latest, output)
             latest.unlink()
 
     async def _execute_command(self, page, cmd: Command):
@@ -150,24 +150,3 @@ class BrowserRecorder:
         handler = BROWSER_COMMANDS.get(cmd.name)
         if handler:
             await handler(page, cmd)
-
-    def _convert_to_mp4(self, webm_path: Path, mp4_path: Path):
-        """Convert webm to mp4 using FFmpeg."""
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(webm_path),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "22",
-            "-pix_fmt",
-            "yuv420p",
-            str(mp4_path),
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"FFmpeg conversion failed: {result.stderr}")

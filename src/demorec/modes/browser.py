@@ -2,11 +2,10 @@
 
 import asyncio
 import json
-import time
 from pathlib import Path
 
 from ..parser import Command, Segment, parse_time
-from . import convert_webm_to_mp4
+from . import CommandExecutorMixin, convert_webm_to_mp4
 
 
 async def _cmd_navigate(page, cmd: Command):
@@ -105,7 +104,7 @@ BROWSER_COMMANDS = {
 }
 
 
-class BrowserRecorder:
+class BrowserRecorder(CommandExecutorMixin):
     """Records browser sessions using Playwright."""
 
     def __init__(self, width: int = 1280, height: int = 720, framerate: int = 30):
@@ -114,19 +113,8 @@ class BrowserRecorder:
         self.framerate = framerate
         self._timed_narrations = {}
 
-    def record(
-        self, segment: Segment, output: Path, timed_narrations: dict = None
-    ) -> dict[int, tuple[float, float]]:
-        """Record a browser segment to video.
-
-        Args:
-            segment: The segment to record
-            output: Output video file path
-            timed_narrations: Dict mapping cmd_index to TimedNarration objects
-
-        Returns:
-            Dict mapping command index to (start_time, end_time) in seconds
-        """
+    def record(self, segment: Segment, output: Path, timed_narrations: dict = None):
+        """Record a browser segment to video. Returns command timestamps."""
         output = output.absolute()
         self._timed_narrations = timed_narrations or {}
         return asyncio.run(self._record_async(segment, output))
@@ -151,25 +139,6 @@ class BrowserRecorder:
             record_video_size={"width": self.width, "height": self.height},
         )
         return context, await context.new_page()
-
-    async def _execute_commands(self, page, segment: Segment) -> dict[int, tuple[float, float]]:
-        """Execute commands with timestamp tracking."""
-        timestamps: dict[int, tuple[float, float]] = {}
-        recording_start = time.time()
-
-        for cmd_idx, cmd in enumerate(segment.commands):
-            narration = self._timed_narrations.get(cmd_idx)
-            if narration and narration.mode == "before":
-                await asyncio.sleep(narration.duration)
-
-            cmd_start = time.time() - recording_start
-            await self._execute_command(page, cmd)
-            timestamps[cmd_idx] = (cmd_start, time.time() - recording_start)
-
-            if narration and narration.mode == "after":
-                await asyncio.sleep(narration.duration)
-
-        return timestamps
 
     def _finalize_video(self, output: Path):
         """Find and convert the recorded video."""

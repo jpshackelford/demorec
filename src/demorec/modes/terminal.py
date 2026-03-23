@@ -12,11 +12,12 @@ from pathlib import Path
 from ..parser import Command, Segment
 from ..ttyd import check_ttyd, find_free_port, stop_ttyd
 from ..xterm import TerminalConfig, fit_to_rows, setup_terminal
+from . import CommandExecutorMixin
 from .terminal_commands import TERMINAL_COMMANDS, THEMES
 from .vim import VimCommandExpander
 
 
-class TerminalRecorder:
+class TerminalRecorder(CommandExecutorMixin):
     """Records terminal sessions using ttyd for full PTY support.
 
     Uses ttyd to create a real PTY connected to xterm.js in a browser,
@@ -154,25 +155,6 @@ class TerminalRecorder:
         await page.keyboard.press("Control+l")
         await asyncio.sleep(0.5)
 
-    async def _execute_commands(self, page, segment: Segment) -> dict[int, tuple[float, float]]:
-        """Execute commands with timestamp tracking."""
-        timestamps: dict[int, tuple[float, float]] = {}
-        recording_start = time.time()
-
-        for cmd_idx, cmd in enumerate(segment.commands):
-            narration = self._timed_narrations.get(cmd_idx)
-            if narration and narration.mode == "before":
-                await asyncio.sleep(narration.duration)
-
-            cmd_start = time.time() - recording_start
-            await self._execute_command(page, cmd)
-            timestamps[cmd_idx] = (cmd_start, time.time() - recording_start)
-
-            if narration and narration.mode == "after":
-                await asyncio.sleep(narration.duration)
-
-        return timestamps
-
     async def _setup_terminal(self, page) -> dict | None:
         """Set up terminal sizing using xterm module."""
         config = self._build_terminal_config()
@@ -261,22 +243,12 @@ class TerminalRecorder:
             await handler(self, page, cmd)
 
     async def _execute_vim_sequence(self, page, commands: list[tuple[str, float]]):
-        """Execute a sequence of vim keystrokes.
-
-        Args:
-            page: Playwright page
-            commands: List of (keys, delay_after) tuples
-                     Special keys: "ENTER", "ESCAPE", "TAB"
-        """
+        """Execute a sequence of vim keystrokes with optional delays."""
+        special_keys = {"ENTER": "Enter", "ESCAPE": "Escape", "TAB": "Tab"}
         for keys, delay in commands:
-            if keys == "ENTER":
-                await page.keyboard.press("Enter")
-            elif keys == "ESCAPE":
-                await page.keyboard.press("Escape")
-            elif keys == "TAB":
-                await page.keyboard.press("Tab")
+            if keys in special_keys:
+                await page.keyboard.press(special_keys[keys])
             else:
                 await self._send_keys(page, keys, delay=0.02)
-
             if delay > 0:
                 await asyncio.sleep(delay)

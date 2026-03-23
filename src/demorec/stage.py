@@ -55,16 +55,7 @@ def parse_highlights(highlights_str: str) -> list[Block]:
 def calculate_visible_range(
     scroll_line: int, visible_rows: int, scroll_method: str = "zz"
 ) -> tuple[int, int]:
-    """Calculate which lines are visible after scrolling.
-
-    Args:
-        scroll_line: The line we're scrolling to
-        visible_rows: Number of visible rows in terminal
-        scroll_method: "zz" (center), "zt" (top), "zb" (bottom)
-
-    Returns:
-        (first_visible, last_visible) tuple
-    """
+    """Calculate visible line range after scrolling. Returns (first, last) tuple."""
     if scroll_method == "zt":
         # Line at top
         first = scroll_line

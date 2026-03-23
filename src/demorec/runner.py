@@ -162,13 +162,8 @@ class Runner:
         if result.returncode != 0:
             raise RuntimeError(f"Audio concat failed: {result.stderr}")
 
-        # Note: durations are computed but not used yet
-        # TODO: Use these to extend/trim video/audio for proper sync
-        _ = self._get_duration(video_path)
-        _ = self._get_duration(combined_audio)
-
-        # If audio is longer than video, we need to extend video
-        # For now, just overlay what we have
+        # TODO: Implement proper audio/video sync using durations
+        # For now, just overlay audio and use the shorter of the two
         cmd = [
             "ffmpeg",
             "-y",

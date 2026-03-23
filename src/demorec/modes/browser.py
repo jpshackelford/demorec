@@ -1,6 +1,7 @@
 """Browser recording mode using Playwright."""
 
 import asyncio
+import json
 import subprocess
 from pathlib import Path
 
@@ -69,14 +70,14 @@ async def _cmd_hover(page, cmd: Command):
 async def _cmd_highlight(page, cmd: Command):
     """Highlight an element with a red outline."""
     if cmd.args:
-        selector = repr(cmd.args[0])
+        selector = json.dumps(cmd.args[0])
         await page.evaluate(f'document.querySelector({selector}).style.outline = "3px solid red";')
 
 
 async def _cmd_unhighlight(page, cmd: Command):
     """Remove highlight from an element."""
     if cmd.args:
-        selector = repr(cmd.args[0])
+        selector = json.dumps(cmd.args[0])
         await page.evaluate(f'document.querySelector({selector}).style.outline = "";')
 
 

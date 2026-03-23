@@ -1,7 +1,6 @@
 """Main runner that orchestrates recording across modes."""
 
 import shutil
-import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +8,13 @@ from pathlib import Path
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from .audio import (
+    generate_srt,
+    get_duration,
+    mix_audio_timed,
+    run_ffmpeg,
+    write_concat_file,
+)
 from .modes import vim as vim_module
 from .modes.browser import BrowserRecorder
 from .modes.terminal import TerminalRecorder
@@ -28,20 +34,6 @@ class TimedNarration:
     duration: float  # audio duration in seconds
     start_time: float = 0.0  # when to start playing (set during recording)
     cmd_index: int = 0  # which command this is attached to
-
-
-def _run_ffmpeg(cmd: list[str], error_msg: str):
-    """Run an FFmpeg command, raising RuntimeError on failure."""
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"{error_msg}: {result.stderr}")
-
-
-def _write_concat_file(file_path: Path, files: list[Path]):
-    """Write an FFmpeg concat file list."""
-    with open(file_path, "w") as f:
-        for item in files:
-            f.write(f"file '{item}'\n")
 
 
 class Runner:
@@ -133,14 +125,14 @@ class Runner:
         if self.timed_narrations:
             task = progress.add_task("Generating subtitles...", total=None)
             srt_path = self.plan.output.with_suffix(".srt")
-            self._generate_srt(srt_path)
+            generate_srt(self.timed_narrations, srt_path)
             progress.update(task, completed=True)
 
     def _run_audio_phase(self, progress, concat_output: Path):
         """Mix audio or copy final output."""
         if self.timed_narrations:
             task = progress.add_task("Mixing audio...", total=None)
-            self._mix_audio_timed(concat_output, self.plan.output)
+            mix_audio_timed(concat_output, self.timed_narrations, self.plan.output)
             progress.update(task, completed=True)
         else:
             shutil.copy(concat_output, self.plan.output)
@@ -214,173 +206,17 @@ class Runner:
                 elif timed.mode == "after":
                     timed.start_time = time_offset + cmd_end
 
-        return self._get_duration(output)
+        return get_duration(output)
 
     def _concat_segments(self, output: Path):
         """Concatenate all segment files using FFmpeg."""
         concat_file = self.temp_dir / "concat.txt"
-        _write_concat_file(concat_file, self.segment_files)
+        write_concat_file(concat_file, self.segment_files)
         cmd = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(concat_file),
-            "-c",
-            "copy",
-            str(output),
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", str(concat_file), "-c", "copy", str(output),
         ]
-        _run_ffmpeg(cmd, "FFmpeg concat failed")
-
-    def _concat_audio_files(self) -> Path:
-        """Concatenate all audio files and return the combined path."""
-        audio_concat = self.temp_dir / "narration_concat.txt"
-        _write_concat_file(audio_concat, self.audio_files)
-        combined = self.temp_dir / "narration_combined.mp3"
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(audio_concat),
-            "-c",
-            "copy",
-            str(combined),
-        ]
-        _run_ffmpeg(cmd, "Audio concat failed")
-        return combined
-
-    def _overlay_audio(self, video: Path, audio: Path, output: Path):
-        """Overlay audio track onto video."""
-        # TODO: Implement proper audio/video sync using durations
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(video),
-            "-i",
-            str(audio),
-            "-c:v",
-            "copy",
-            "-c:a",
-            "aac",
-            "-shortest",
-            str(output),
-        ]
-        _run_ffmpeg(cmd, "Audio mixing failed")
-
-    def _mix_audio(self, video_path: Path, output: Path):
-        """Mix narration audio with video."""
-        if self.timed_narrations:
-            return self._mix_audio_timed(video_path, output)
-        shutil.copy(video_path, output)
-
-    def _generate_srt(self, output_path: Path):
-        """Generate SRT subtitle file from timed narrations."""
-
-        def format_time(seconds: float) -> str:
-            hours = int(seconds // 3600)
-            minutes = int((seconds % 3600) // 60)
-            secs = int(seconds % 60)
-            millis = int((seconds % 1) * 1000)
-            return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
-
-        def split_caption(text: str, max_len: int = 42) -> list[str]:
-            if len(text) <= max_len:
-                return [text]
-            lines = []
-            words = text.split()
-            current_line = ""
-            for word in words:
-                if len(current_line) + len(word) + 1 <= max_len:
-                    current_line = f"{current_line} {word}".strip()
-                else:
-                    if current_line:
-                        lines.append(current_line)
-                    current_line = word
-            if current_line:
-                lines.append(current_line)
-            return lines
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            for i, narration in enumerate(self.timed_narrations, 1):
-                start = max(0, narration.start_time)
-                end = start + narration.duration
-                lines = split_caption(narration.text)
-                caption_text = "\n".join(lines)
-                f.write(f"{i}\n")
-                f.write(f"{format_time(start)} --> {format_time(end)}\n")
-                f.write(f"{caption_text}\n\n")
-
-    def _mix_audio_timed(self, video_path: Path, output: Path):
-        """Mix narration audio with video at correct timestamps."""
-        if not self.timed_narrations:
-            shutil.copy(video_path, output)
-            return
-
-        video_duration = self._get_duration(video_path)
-
-        inputs = ["-i", str(video_path)]
-        filter_parts = []
-
-        for i, narration in enumerate(self.timed_narrations):
-            inputs.extend(["-i", str(narration.audio_path)])
-            delay_ms = int(max(0, narration.start_time) * 1000)
-            filter_parts.append(f"[{i + 1}:a]adelay={delay_ms}|{delay_ms}[a{i}]")
-
-        if len(self.timed_narrations) == 1:
-            filter_complex = f"{filter_parts[0]}; [a0]apad[aout]"
-        else:
-            mix_inputs = "".join(f"[a{i}]" for i in range(len(self.timed_narrations)))
-            amix_opts = "duration=longest:normalize=0:dropout_transition=0"
-            amix_filter = f"{mix_inputs}amix=inputs={len(self.timed_narrations)}:{amix_opts}[aout]"
-            filter_complex = "; ".join(filter_parts) + f"; {amix_filter}"
-
-        cmd = [
-            "ffmpeg",
-            "-y",
-            *inputs,
-            "-filter_complex",
-            filter_complex,
-            "-map",
-            "0:v",
-            "-map",
-            "[aout]",
-            "-c:v",
-            "copy",
-            "-c:a",
-            "aac",
-            "-t",
-            str(video_duration),
-            str(output),
-        ]
-
-        _run_ffmpeg(cmd, "Audio mixing failed")
-
-    def _get_duration(self, media_path: Path) -> float:
-        """Get duration of a media file in seconds."""
-        import json
-
-        cmd = [
-            "ffprobe",
-            "-v",
-            "quiet",
-            "-print_format",
-            "json",
-            "-show_format",
-            str(media_path),
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            data = json.loads(result.stdout)
-            return float(data.get("format", {}).get("duration", 0))
-        return 0.0
+        run_ffmpeg(cmd, "FFmpeg concat failed")
 
     def cleanup(self):
         """Remove temporary files."""

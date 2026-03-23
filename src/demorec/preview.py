@@ -38,6 +38,64 @@ class PreviewResult:
     screenshot_dir: Path | None
 
 
+def _find_ttyd() -> str:
+    """Find ttyd executable."""
+    local_bin = str(Path.home() / ".local/bin")
+    search_path = f"{local_bin}:{os.environ.get('PATH', '')}"
+
+    ttyd_path = shutil.which("ttyd", path=search_path)
+    if ttyd_path:
+        return ttyd_path
+
+    for path in ["/usr/local/bin/ttyd", f"{local_bin}/ttyd"]:
+        if Path(path).exists():
+            return path
+
+    raise RuntimeError("ttyd not found. Install with: brew install ttyd")
+
+
+def _make_clean_env() -> dict[str, str]:
+    """Create clean environment for ttyd subprocess."""
+    env = os.environ.copy()
+    env["TERM"] = "xterm-256color"
+    env["PS1"] = "$ "
+    env["PROMPT_COMMAND"] = ""
+
+    local_bin = str(Path.home() / ".local/bin")
+    current_path = env.get("PATH", "")
+    if local_bin not in current_path:
+        env["PATH"] = f"{local_bin}:{current_path}"
+
+    for key in list(env.keys()):
+        if "PROMPT" in key and key != "PROMPT_COMMAND":
+            del env[key]
+
+    return env
+
+
+def _start_ttyd(ttyd_path: str, port: int, env: dict) -> subprocess.Popen:
+    """Start ttyd subprocess."""
+    ttyd_cmd = [
+        ttyd_path, "-p", str(port), "--writable", "--once",
+        "/bin/bash", "--norc", "--noprofile",
+    ]
+    return subprocess.Popen(
+        ttyd_cmd, env=env,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+
+def _stop_ttyd(process: subprocess.Popen | None) -> None:
+    """Stop ttyd subprocess."""
+    if not process:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
 class TerminalPreviewer:
     """Previews a terminal recording, verifying checkpoints."""
 
@@ -46,7 +104,7 @@ class TerminalPreviewer:
         rows: int = 30,
         width: int = 1280,
         height: int = 720,
-        screenshots: str = "on_error",  # "always", "never", "on_error"
+        screenshots: str = "on_error",
     ):
         self.rows = rows
         self.width = width
@@ -54,137 +112,95 @@ class TerminalPreviewer:
         self.screenshots = screenshots
         self._ttyd_process = None
 
-    def preview(self, script_path: Path, segment, output_dir: Path | None = None) -> PreviewResult:
+    def preview(
+        self, script_path: Path, segment, output_dir: Path | None = None
+    ) -> PreviewResult:
         """Run preview and return results."""
         return asyncio.run(self._preview_async(script_path, segment, output_dir))
 
     async def _preview_async(
         self, script_path: Path, segment, output_dir: Path | None
     ) -> PreviewResult:
-        from playwright.async_api import async_playwright
-
-        # Detect checkpoints from parsed commands
         checkpoints = self._detect_checkpoints_from_commands(segment.commands)
+        screenshot_dir = self._setup_screenshot_dir(output_dir)
 
-        # Set up screenshot directory if needed
-        screenshot_dir = None
-        if self.screenshots != "never":
-            screenshot_dir = output_dir or Path(".demorec_preview")
-            screenshot_dir.mkdir(exist_ok=True)
-
-        # Find ttyd (check multiple locations including ~/.local/bin)
-        local_bin = str(Path.home() / ".local/bin")
-        search_path = f"{local_bin}:{os.environ.get('PATH', '')}"
-
-        ttyd_path = shutil.which("ttyd", path=search_path)
-        if not ttyd_path:
-            # Check common locations explicitly
-            for path in ["/usr/local/bin/ttyd", f"{local_bin}/ttyd"]:
-                if Path(path).exists():
-                    ttyd_path = path
-                    break
-
-        if not ttyd_path:
-            raise RuntimeError("ttyd not found. Install with: brew install ttyd")
-
-        # Start ttyd on a random port with clean environment
+        ttyd_path = _find_ttyd()
+        env = _make_clean_env()
         port = 7682
 
-        # Critical: Remove OpenHands PS1JSON artifacts by clearing PROMPT_COMMAND
-        # and setting a simple PS1
-        env = os.environ.copy()
-        env["TERM"] = "xterm-256color"
-        env["PS1"] = "$ "  # Simple prompt
-        env["PROMPT_COMMAND"] = ""  # Clear PROMPT_COMMAND that sets PS1JSON
-
-        # Ensure PATH includes common binary locations (including vim)
-        local_bin = str(Path.home() / ".local/bin")
-        current_path = env.get("PATH", "")
-        if local_bin not in current_path:
-            env["PATH"] = f"{local_bin}:{current_path}"
-
-        # Remove any other prompt-related variables that might interfere
-        for key in list(env.keys()):
-            if "PROMPT" in key and key != "PROMPT_COMMAND":
-                del env[key]
-
-        # Start ttyd with bash --norc --noprofile to avoid loading any shell configs
-        ttyd_cmd = [
-            ttyd_path,
-            "-p",
-            str(port),
-            "--writable",
-            "--once",
-            "/bin/bash",
-            "--norc",
-            "--noprofile",
-        ]
-        self._ttyd_process = subprocess.Popen(
-            ttyd_cmd,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
+        self._ttyd_process = _start_ttyd(ttyd_path, port, env)
         await asyncio.sleep(0.5)
 
-        results: list[CheckpointResult] = []
-
         try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch()
-                context = await browser.new_context(
-                    viewport={"width": self.width, "height": self.height},
-                )
-                page = await context.new_page()
-
-                await page.goto(f"http://localhost:{port}", wait_until="networkidle")
-                await page.wait_for_selector(".xterm-screen", timeout=10000)
-                await page.wait_for_function("() => window.term !== undefined", timeout=10000)
-                await asyncio.sleep(0.3)
-
-                # Set up terminal (same as recording)
-                await self._setup_terminal(page)
-
-                # Build checkpoint lookup by command index
-                checkpoint_map: dict[int, Checkpoint] = {cp.command_index: cp for cp in checkpoints}
-
-                # Execute commands, pausing at checkpoints
-                for cmd_idx, cmd in enumerate(segment.commands):
-                    await self._execute_command(page, cmd)
-
-                    # Check if this is a checkpoint
-                    if cmd_idx in checkpoint_map:
-                        # Wait for vim to render the visual selection
-                        await asyncio.sleep(0.5)
-
-                        cp = checkpoint_map[cmd_idx]
-                        result = await self._verify_checkpoint(
-                            page, cp, screenshot_dir, len(results) + 1
-                        )
-                        results.append(result)
-
-                await context.close()
-                await browser.close()
-
+            results = await self._run_browser_session(port, segment, checkpoints, screenshot_dir)
         finally:
-            if self._ttyd_process:
-                self._ttyd_process.terminate()
-                try:
-                    self._ttyd_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    self._ttyd_process.kill()
+            _stop_ttyd(self._ttyd_process)
 
+        return self._build_result(results, screenshot_dir)
+
+    def _setup_screenshot_dir(self, output_dir: Path | None) -> Path | None:
+        """Set up screenshot directory if needed."""
+        if self.screenshots == "never":
+            return None
+        screenshot_dir = output_dir or Path(".demorec_preview")
+        screenshot_dir.mkdir(exist_ok=True)
+        return screenshot_dir
+
+    def _build_result(
+        self, results: list[CheckpointResult], screenshot_dir: Path | None
+    ) -> PreviewResult:
+        """Build final PreviewResult from checkpoint results."""
         passed = sum(1 for r in results if r.passed)
-        failed = len(results) - passed
-
         return PreviewResult(
             total=len(results),
             passed=passed,
-            failed=failed,
+            failed=len(results) - passed,
             results=results,
             screenshot_dir=screenshot_dir if results else None,
         )
+
+    async def _run_browser_session(
+        self, port: int, segment, checkpoints: list[Checkpoint], screenshot_dir: Path | None
+    ) -> list[CheckpointResult]:
+        """Run the browser session and execute commands."""
+        from playwright.async_api import async_playwright
+
+        results: list[CheckpointResult] = []
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await self._setup_browser_page(browser, port)
+
+            await self._setup_terminal(page)
+            checkpoint_map = {cp.command_index: cp for cp in checkpoints}
+
+            for cmd_idx, cmd in enumerate(segment.commands):
+                await self._execute_command(page, cmd)
+                if cmd_idx in checkpoint_map:
+                    await asyncio.sleep(0.5)
+                    cp = checkpoint_map[cmd_idx]
+                    result = await self._verify_checkpoint(
+                        page, cp, screenshot_dir, len(results) + 1
+                    )
+                    results.append(result)
+
+            await browser.close()
+
+        return results
+
+    async def _setup_browser_page(self, browser, port: int):
+        """Set up browser page and wait for terminal."""
+        context = await browser.new_context(
+            viewport={"width": self.width, "height": self.height},
+        )
+        page = await context.new_page()
+
+        await page.goto(f"http://localhost:{port}", wait_until="networkidle")
+        await page.wait_for_selector(".xterm-screen", timeout=10000)
+        await page.wait_for_function("() => window.term !== undefined", timeout=10000)
+        await asyncio.sleep(0.3)
+
+        return page
 
     def _detect_checkpoints_from_commands(self, commands) -> list[Checkpoint]:
         """Detect checkpoints from parsed commands.

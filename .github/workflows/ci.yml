@@ -113,9 +113,9 @@ jobs:
           python-version: "3.12"
 
       - name: Check function length
-        # Thresholds: warn at 15 lines, error at 25 lines
+        # Thresholds: warn at 8 lines, error at 12 lines (strict)
         # Use "# length-ok" comment on def line to exempt specific functions
-        run: python scripts/check_function_length.py src/ --warn 15 --error 25
+        run: python scripts/check_function_length.py src/ --warn 8 --error 12
 
   quality-report:
     name: Quality Report

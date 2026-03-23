@@ -5,9 +5,7 @@ based on terminal dimensions and desired line ranges.
 """
 
 import json
-import re
 from dataclasses import dataclass
-from pathlib import Path
 
 
 @dataclass
@@ -239,155 +237,27 @@ def format_directions_demorec(directions: list[StageDirection]) -> str:
     return "\n".join(lines)
 
 
-# =============================================================================
-# Checkpoint Detection
-# =============================================================================
+# Re-export checkpoint functionality for backwards compatibility
+from .checkpoints import (  # noqa: E402, F401
+    Checkpoint,
+    detect_checkpoints,
+    format_checkpoints_json,
+    format_checkpoints_text,
+)
 
-
-@dataclass
-class Checkpoint:
-    """An automatically detected checkpoint in a script."""
-
-    line_number: int  # Line in script file
-    command_index: int  # Index in command list
-    event_type: str  # Type of event that triggered checkpoint
-    description: str  # Human-readable description
-    expected_highlight: tuple[int, int] | None = None  # Expected line range if visual selection
-
-
-def detect_checkpoints(script_path: Path) -> list[Checkpoint]:
-    """Detect natural checkpoint locations in a .demorec script.
-
-    Checkpoints are detected at:
-    1. End of visual selections (V...G pattern before Escape or next action)
-    2. After narration points (@narrate:after)
-    3. After file opens (vim/less + Enter + Sleep)
-    4. After scroll positioning (Gzz/zt/zb + Sleep)
-    """
-    with open(script_path) as f:
-        lines = f.readlines()
-
-    checkpoints = []
-    command_index = 0
-
-    # State tracking
-    in_visual_mode = False
-    visual_start_line: int | None = None
-    pending_goto: int | None = None
-    last_type_line = 0
-
-    for i, line in enumerate(lines):
-        line_stripped = line.strip()
-        line_num = i + 1  # 1-indexed
-
-        # Skip comments and empty lines for command counting
-        # but check for narration markers
-        if line_stripped.startswith("#"):
-            if "@narrate:after" in line_stripped:
-                # Narration point - the previous visual selection should be visible
-                expected = (visual_start_line, pending_goto) if visual_start_line else None
-                checkpoints.append(
-                    Checkpoint(
-                        line_number=line_num,
-                        command_index=command_index,
-                        event_type="narration",
-                        description="Narration point - content should be visible",
-                        expected_highlight=expected,
-                    )
-                )
-            continue
-
-        is_directive = line_stripped.startswith("@")
-        is_setting = line_stripped.startswith("Set ") or line_stripped.startswith("Output ")
-        if not line_stripped or is_directive or is_setting:
-            continue
-
-        # Parse Type commands
-        type_match = re.match(r'Type\s+"([^"]+)"', line_stripped)
-        if type_match:
-            typed_content = type_match.group(1)
-            last_type_line = line_num
-
-            # Detect goto line commands (e.g., "6G", "27G")
-            goto_match = re.match(r"(\d+)G", typed_content)
-            if goto_match:
-                pending_goto = int(goto_match.group(1))
-
-            # Detect visual mode start
-            if typed_content == "V" or typed_content == "v":
-                in_visual_mode = True
-                visual_start_line = pending_goto
-
-            # Detect scroll commands
-            if typed_content in ("zz", "zt", "zb"):
-                # Scroll positioning
-                pass
-
-            command_index += 1
-
-        # Detect Escape - end of visual mode
-        elif line_stripped == "Escape":
-            if in_visual_mode and visual_start_line and pending_goto:
-                # End of visual selection - this is a checkpoint
-                start = min(visual_start_line, pending_goto)
-                end = max(visual_start_line, pending_goto)
-                checkpoints.append(
-                    Checkpoint(
-                        line_number=last_type_line,  # Use line of last Type command
-                        command_index=command_index - 1,
-                        event_type="visual_selection",
-                        description=f"Visual selection complete: lines {start}-{end}",
-                        expected_highlight=(start, end),
-                    )
-                )
-
-            in_visual_mode = False
-            visual_start_line = None
-            command_index += 1
-
-        # Enter, Sleep, etc.
-        elif line_stripped == "Enter":
-            command_index += 1
-        elif line_stripped.startswith("Sleep"):
-            command_index += 1
-
-    return checkpoints
-
-
-def format_checkpoints_text(checkpoints: list[Checkpoint]) -> str:
-    """Format detected checkpoints as human-readable text."""
-    if not checkpoints:
-        return "No checkpoints detected."
-
-    lines = [f"Detected {len(checkpoints)} checkpoints:", ""]
-
-    for i, cp in enumerate(checkpoints, 1):
-        lines.append(f"Checkpoint {i} (line {cp.line_number}):")
-        lines.append(f"  Event: {cp.event_type}")
-        lines.append(f"  Description: {cp.description}")
-        if cp.expected_highlight:
-            hl_start, hl_end = cp.expected_highlight
-            lines.append(f"  Expected visible: lines {hl_start}-{hl_end}")
-        lines.append("")
-
-    return "\n".join(lines)
-
-
-def format_checkpoints_json(checkpoints: list[Checkpoint]) -> str:
-    """Format detected checkpoints as JSON."""
-    data = {
-        "checkpoint_count": len(checkpoints),
-        "checkpoints": [
-            {
-                "line_number": cp.line_number,
-                "command_index": cp.command_index,
-                "event_type": cp.event_type,
-                "description": cp.description,
-                "expected_highlight": list(cp.expected_highlight)
-                if cp.expected_highlight
-                else None,
-            }
-            for cp in checkpoints
-        ],
-    }
-    return json.dumps(data, indent=2)
+__all__ = [
+    # Stage directions
+    "Block",
+    "StageDirection",
+    "parse_highlights",
+    "calculate_visible_range",
+    "calculate_stage_directions",
+    "format_directions_text",
+    "format_directions_json",
+    "format_directions_demorec",
+    # Checkpoints (re-exported)
+    "Checkpoint",
+    "detect_checkpoints",
+    "format_checkpoints_text",
+    "format_checkpoints_json",
+]

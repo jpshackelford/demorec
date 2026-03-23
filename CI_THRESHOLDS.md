@@ -9,9 +9,9 @@ Gradually tighten these as the codebase improves.
 |-------|---------|-----------------|--------|
 | **Lint** | Blocking | Blocking | ✅ Enforced |
 | **Format** | Blocking | Blocking | ✅ Enforced |
-| **Complexity (absolute)** | D (21-30) | C (11-20) | 🔄 Relaxed |
-| **Complexity (modules)** | B (6-10) | A (1-5) | 🔄 Relaxed |
-| **Complexity (average)** | B (6-10) | A (1-5) | 🔄 Relaxed |
+| **Complexity (absolute)** | C (11-20) | C (11-20) | ✅ Enforced |
+| **Complexity (modules)** | A (1-5) | A (1-5) | ✅ Enforced |
+| **Complexity (average)** | A (1-5) | A (1-5) | ✅ Enforced |
 | **Function Length (warn)** | 20 lines | 8 lines | 🔄 Relaxed |
 | **Function Length (error)** | 65 lines | 12 lines | 🔄 Relaxed |
 
@@ -31,27 +31,22 @@ ruff check src/ --fix      # Auto-fix linting issues
 ruff format src/           # Auto-format code
 ```
 
-### 2. Cyclomatic Complexity (Xenon)
+### 2. Cyclomatic Complexity (Xenon) ✅ Enforced
 
-**Current:**
-```yaml
-run: xenon --max-absolute D --max-modules B --max-average B src/demorec/
-```
-
-**Target:**
-```yaml
-run: xenon --max-absolute C --max-modules A --max-average A src/demorec/
+Complexity checks are now enforced at strict thresholds:
+```bash
+xenon --max-absolute C --max-modules A --max-average A src/demorec/
 ```
 
 **Complexity grades:**
 - A: 1-5 (simple)
 - B: 6-10 (low)
 - C: 11-20 (moderate)
-- D: 21-30 (high)
-- E: 31-40 (very high)
-- F: 41+ (extremely high)
+- D: 21-30 (high) - **blocked**
+- E: 31-40 (very high) - **blocked**
+- F: 41+ (extremely high) - **blocked**
 
-**Fix high complexity:** Break complex functions into smaller, focused functions.
+**Fix high complexity:** Break complex functions into smaller, focused functions using dispatch tables or helper functions.
 
 ### 3. Function Length
 

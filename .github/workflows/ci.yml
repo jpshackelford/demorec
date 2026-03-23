@@ -95,12 +95,8 @@ jobs:
           pip install radon xenon
 
       - name: Check cyclomatic complexity (xenon)
-        # TODO: Tighten thresholds as code is refactored
-        # CURRENT: --max-absolute D --max-modules B --max-average B (relaxed)
-        # TARGET:  --max-absolute C --max-modules A --max-average A (strict)
-        #
         # Grades: A=1-5, B=6-10, C=11-20, D=21-30, E=31-40, F=41+
-        run: xenon --max-absolute D --max-modules B --max-average B src/demorec/
+        run: xenon --max-absolute C --max-modules A --max-average A src/demorec/
 
       - name: Show complexity metrics (radon)
         run: radon cc src/demorec/ -a -s

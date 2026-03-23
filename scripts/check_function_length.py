@@ -34,9 +34,9 @@ CYAN = "\033[36m"
 RESET = "\033[0m"
 BOLD = "\033[1m"
 
-# Pattern to match logger calls
+# Pattern to match logger calls (including self.logger for OOP code)
 LOGGER_PATTERN = re.compile(
-    r"^\s*(logger|logging)\.(debug|info|warning|error|exception|critical)\("
+    r"^\s*(?:self\.)?(logger|logging)\.(debug|info|warning|error|exception|critical)\("
 )
 
 # Exemption marker
@@ -49,18 +49,41 @@ def _is_exempt_function(source_lines: list[str], start_line: int) -> bool:
     return EXEMPT_MARKER in def_line
 
 
-def _count_logic_lines(source_lines: list[str], start: int, end: int) -> int:
+def _get_docstring_lines(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[int]:
+    """Get line numbers that are part of a docstring using AST.
+    
+    This is more robust than string matching as it correctly identifies
+    actual docstrings vs strings containing triple quotes.
+    """
+    docstring_lines = set()
+    if (node.body and isinstance(node.body[0], ast.Expr) and 
+        isinstance(node.body[0].value, ast.Constant) and
+        isinstance(node.body[0].value.value, str)):
+        # Found a docstring - mark all its lines
+        doc_node = node.body[0]
+        for line_num in range(doc_node.lineno, (doc_node.end_lineno or doc_node.lineno) + 1):
+            docstring_lines.add(line_num)
+    return docstring_lines
+
+
+def _count_logic_lines(
+    source_lines: list[str], 
+    node: ast.FunctionDef | ast.AsyncFunctionDef
+) -> int:
     """Count logic lines in a function body, excluding non-logic lines.
 
     Excludes: function signature, blank lines, comments, docstrings, logger calls.
+    Uses AST for robust docstring detection.
     """
-    func_lines = source_lines[start - 1 : end]
+    start = node.lineno
+    end = node.end_lineno or node.lineno
+    docstring_lines = _get_docstring_lines(node)
+    
     count = 0
-    in_docstring = False
-    docstring_delim = None
     past_signature = False
 
-    for line in func_lines:
+    for line_num in range(start, end + 1):
+        line = source_lines[line_num - 1]
         stripped = line.strip()
 
         # Skip multi-line function signature (until we see line ending with ':')
@@ -69,19 +92,8 @@ def _count_logic_lines(source_lines: list[str], start: int, end: int) -> int:
                 past_signature = True
             continue
 
-        # Handle docstrings (multi-line and single-line)
-        if not in_docstring:
-            if stripped.startswith('"""') or stripped.startswith("'''"):
-                delim = stripped[:3]
-                # Check if docstring closes on same line
-                if stripped.count(delim) >= 2 and len(stripped) > 3:
-                    continue  # Single-line docstring, skip it
-                in_docstring = True
-                docstring_delim = delim
-                continue
-        else:
-            if docstring_delim in stripped:
-                in_docstring = False
+        # Skip docstring lines (identified via AST)
+        if line_num in docstring_lines:
             continue
 
         # Skip blank lines
@@ -113,7 +125,7 @@ def get_function_lengths(filepath: Path) -> list[tuple[str, int, int, int, bool]
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             end_line = node.end_lineno or node.lineno
             start_line = node.lineno
-            logic_lines = _count_logic_lines(source_lines, start_line, end_line)
+            logic_lines = _count_logic_lines(source_lines, node)
             exempt = _is_exempt_function(source_lines, start_line)
             results.append((node.name, start_line, end_line, logic_lines, exempt))
     return results

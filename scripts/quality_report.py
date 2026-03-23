@@ -135,7 +135,7 @@ def generate_report(output_file: str | None = None) -> str:
     coverage = get_coverage_data()
     baseline = get_coverage_baseline()
     complexity = get_complexity_data()
-    # function_lengths = get_function_length_data()
+    function_lengths = get_function_length_data()
 
     # Calculate totals
     total_coverage = (
@@ -148,6 +148,7 @@ def generate_report(output_file: str | None = None) -> str:
         if f in baseline and c < baseline[f] - 0.5
     )
     complex_files = sum(1 for _, (g, _) in complexity.items() if g in "DEF")
+    long_function_count = sum(len(funcs) for funcs in function_lengths.values())
     
     lines = []
     lines.append("## 📊 Quality Report\n")
@@ -161,7 +162,11 @@ def generate_report(output_file: str | None = None) -> str:
     if complex_files > 0:
         complex_badge += f" ({complex_files} need attention)"
     
-    lines.append(f"{cov_badge} | {complex_badge}\n")
+    func_badge = ""
+    if long_function_count > 0:
+        func_badge = f" | **Long functions:** {long_function_count} ⚠️"
+    
+    lines.append(f"{cov_badge} | {complex_badge}{func_badge}\n")
     
     # Detailed table - only show files needing attention or with changes
     lines.append("<details>")
@@ -218,6 +223,12 @@ def generate_report(output_file: str | None = None) -> str:
         if grade in "DEF":
             short = filepath.replace("src/demorec/", "")
             action_items.append(f"- {grade_emoji(grade)} `{short}`: complexity grade {grade} (CC={cc})")
+    
+    # Long functions
+    for filepath, funcs in function_lengths.items():
+        short = filepath.replace("src/demorec/", "")
+        for func_name, lines_count in funcs[:3]:  # Show top 3 per file
+            action_items.append(f"- 📏 `{short}`: `{func_name}()` has {lines_count} lines")
     
     # New files below threshold
     for filepath, cov in coverage.items():

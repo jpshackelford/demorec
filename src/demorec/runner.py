@@ -9,11 +9,11 @@ from pathlib import Path
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from .modes import vim as vim_module
 from .modes.browser import BrowserRecorder
 from .modes.terminal import TerminalRecorder
-from .modes import vim as vim_module
 from .parser import Plan, Segment
-from .tts import get_tts_engine, get_audio_duration
+from .tts import get_audio_duration, get_tts_engine
 
 console = Console()
 
@@ -338,10 +338,9 @@ class Runner:
             filter_complex = f"{filter_parts[0]}; [a0]apad[aout]"
         else:
             mix_inputs = "".join(f"[a{i}]" for i in range(len(self.timed_narrations)))
-            filter_complex = (
-                "; ".join(filter_parts)
-                + f"; {mix_inputs}amix=inputs={len(self.timed_narrations)}:duration=longest:normalize=0:dropout_transition=0[aout]"
-            )
+            amix_opts = "duration=longest:normalize=0:dropout_transition=0"
+            amix_filter = f"{mix_inputs}amix=inputs={len(self.timed_narrations)}:{amix_opts}[aout]"
+            filter_complex = "; ".join(filter_parts) + f"; {amix_filter}"
 
         cmd = [
             "ffmpeg",

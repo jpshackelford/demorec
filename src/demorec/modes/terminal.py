@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 
 from ..parser import Command, Segment, parse_time
-from . import convert_webm_to_mp4
 from .vim import VimCommandExpander
 
 
@@ -454,7 +453,10 @@ class TerminalRecorder:
                     const currentFontSize = term.options.fontSize || 14;
 
                     if (currentRows === desiredRows) {
-                        return { rows: currentRows, cols: term.cols, fontSize: currentFontSize, done: true };
+                        return {
+                            rows: currentRows, cols: term.cols,
+                            fontSize: currentFontSize, done: true
+                        };
                     }
 
                     const newFontSize = Math.round(currentFontSize * (currentRows / desiredRows));

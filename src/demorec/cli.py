@@ -8,18 +8,18 @@ from rich.console import Console
 
 from . import __version__
 from .parser import Plan, parse_script
+from .preview import TerminalPreviewer
 from .runner import Runner
 from .stage import (
-    parse_highlights,
     calculate_stage_directions,
-    format_directions_text,
-    format_directions_json,
-    format_directions_demorec,
     detect_checkpoints,
-    format_checkpoints_text,
     format_checkpoints_json,
+    format_checkpoints_text,
+    format_directions_demorec,
+    format_directions_json,
+    format_directions_text,
+    parse_highlights,
 )
-from .preview import TerminalPreviewer
 
 console = Console()
 
@@ -198,7 +198,7 @@ def checkpoints(script: Path, output_format: str):
 
         demorec checkpoints script.demorec --format json
     """
-    console.print(f"[bold blue]demorec[/] checkpoints")
+    console.print("[bold blue]demorec[/] checkpoints")
     console.print(f"[dim]Analyzing:[/] {script}\n")
 
     detected = detect_checkpoints(script)
@@ -238,7 +238,7 @@ def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path 
     """
     from rich.progress import Progress, SpinnerColumn, TextColumn
 
-    console.print(f"[bold blue]demorec[/] preview")
+    console.print("[bold blue]demorec[/] preview")
     console.print(f"[dim]Script:[/] {script}")
     console.print(f"[dim]Terminal:[/] {rows} rows")
 
@@ -298,7 +298,8 @@ def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path 
         console.print()
 
     if result.failed > 0:
-        console.print(f"[bold red]Summary: {result.passed}/{result.total} passed, {result.failed} failed[/]")
+        msg = f"[bold red]Summary: {result.passed}/{result.total} passed, {result.failed} failed[/]"
+        console.print(msg)
         if result.screenshot_dir:
             console.print(f"[dim]Screenshots saved to: {result.screenshot_dir}[/]")
         raise SystemExit(1)

@@ -1,0 +1,46 @@
+# video2_primitives.demorec - Code review using high-level vim primitives
+Output video2_primitives.mp4
+Set Width 1280
+Set Height 720
+
+# @voice edge:jenny
+
+@mode terminal
+@terminal:rows 30
+Set Theme "Dracula"
+
+# Open the file using the high-level primitive
+Open "examples/sample_code.py"
+Sleep 0.5s
+# @narrate:after "Let's review this Python API client code."
+Sleep 1s
+
+# Highlight imports (lines 4-7)
+Highlight "4-7"
+Sleep 0.5s
+# @narrate:after "First, notice the imports. We're using dataclasses and typing for clean, type-safe code."
+Sleep 1s
+
+# Highlight User dataclass (lines 10-16)
+Highlight "10-16"
+Sleep 0.5s
+# @narrate:after "Here's our User dataclass defining the structure with ID, name, email, and an active flag."
+Sleep 1s
+
+# Highlight get_users method (lines 26-34)
+Highlight "26-34"
+Sleep 0.5s
+# @narrate:after "The get_users method makes an authenticated GET request and converts the JSON response into User objects."
+Sleep 1s
+
+# Highlight main function (lines 63-73)
+Highlight "63-73"
+Sleep 0.5s
+# @narrate:after "Finally, the main function creates a client and fetches all users. Simple and clean!"
+Sleep 1s
+
+# Exit vim using the high-level primitive
+Close
+Sleep 0.5s
+# @narrate:after "That's a quick tour of the code structure."
+Sleep 1s

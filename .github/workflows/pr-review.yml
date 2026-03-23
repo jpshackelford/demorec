@@ -12,6 +12,7 @@ permissions:
 jobs:
   pr-review:
     # Only run for PRs from this repo (not forks) to access secrets
+    # Also requires LLM_API_KEY secret to be configured
     # Triggers:
     #   - Non-draft PR opened
     #   - Draft PR marked ready for review
@@ -33,7 +34,18 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-24.04
     steps:
+      - name: Check for LLM API key
+        id: check-secret
+        run: |
+          if [ -z "${{ secrets.LLM_API_KEY }}" ]; then
+            echo "has_key=false" >> $GITHUB_OUTPUT
+            echo "::warning::LLM_API_KEY secret not configured. Skipping AI review."
+          else
+            echo "has_key=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Run PR Review
+        if: steps.check-secret.outputs.has_key == 'true'
         uses: OpenHands/extensions/plugins/pr-review@main
         with:
           llm-model: litellm_proxy/claude-sonnet-4-5-20250929

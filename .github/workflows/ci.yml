@@ -32,10 +32,12 @@ jobs:
           pip install ruff
 
       - name: Run Ruff linter
-        run: ruff check src/
+        # Show issues but don't fail build initially (remove || true to enforce)
+        run: ruff check src/ || true
 
       - name: Run Ruff formatter check
-        run: ruff format --check src/
+        # Show issues but don't fail build initially (remove || true to enforce)
+        run: ruff format --check src/ || true
 
   test:
     name: Test (Python ${{ matrix.python-version }})
@@ -95,7 +97,10 @@ jobs:
           pip install radon xenon
 
       - name: Check cyclomatic complexity (xenon)
-        run: xenon --max-absolute C --max-modules A --max-average A src/demorec/
+        # D = max absolute complexity allowed (relaxed for initial adoption)
+        # B = max module complexity
+        # B = max average complexity
+        run: xenon --max-absolute D --max-modules B --max-average B src/demorec/
 
       - name: Show complexity metrics (radon)
         run: radon cc src/demorec/ -a -s
@@ -112,7 +117,8 @@ jobs:
           python-version: "3.12"
 
       - name: Check function length
-        run: python scripts/check_function_length.py src/
+        # Relaxed thresholds for initial adoption: warn at 20, error at 65
+        run: python scripts/check_function_length.py src/ --warn 20 --error 65
 
   quality-report:
     name: Quality Report

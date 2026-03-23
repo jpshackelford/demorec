@@ -123,92 +123,103 @@ def tokenize_line(line: str) -> list[str]:
     return tokens
 
 
-def parse_script(path: Path) -> Plan:
-    """Parse a .demorec script file into an execution plan."""
-    plan = Plan()
+@dataclass
+class _ParseContext:
+    """Mutable parsing state."""
+
+    plan: Plan
     current_segment: Segment | None = None
     pending_narration: Narration | None = None
+
+
+def _parse_comment(line: str, line_num: int, ctx: _ParseContext) -> bool:
+    """Parse a comment line for directives. Returns True if line was handled."""
+    narrate_match = re.match(r"#\s*@narrate:(before|during|after)\s+(.+)", line)
+    if narrate_match:
+        mode = narrate_match.group(1)
+        text = parse_string(narrate_match.group(2).strip())
+        ctx.pending_narration = Narration(mode=mode, text=text, line_num=line_num)
+        return True
+
+    voice_match = re.match(r"#\s*@voice\s+(\S+)", line)
+    if voice_match:
+        ctx.plan.voice = voice_match.group(1)
+        return True
+
+    return True  # Regular comment - skip
+
+
+def _handle_set_directive(args: list[str], line_num: int, ctx: _ParseContext):
+    """Handle the Set directive for plan settings."""
+    if len(args) < 2:
+        return
+    key, val = args[0].lower(), args[1]
+    setters = {
+        "width": lambda: setattr(ctx.plan, "width", int(val)),
+        "height": lambda: setattr(ctx.plan, "height", int(val)),
+        "framerate": lambda: setattr(ctx.plan, "framerate", int(val)),
+    }
+    if key in setters:
+        setters[key]()
+    elif key == "theme" and ctx.current_segment:
+        ctx.current_segment.commands.append(Command("SetTheme", [val], line_num))
+
+
+def _handle_mode_switch(args: list[str], ctx: _ParseContext):
+    """Handle @mode directive to switch recording modes."""
+    if args and args[0].lower() in ("terminal", "browser"):
+        ctx.current_segment = Segment(mode=args[0].lower())
+        ctx.plan.segments.append(ctx.current_segment)
+
+
+def _ensure_segment(ctx: _ParseContext):
+    """Ensure there's an active segment, defaulting to terminal."""
+    if ctx.current_segment is None:
+        ctx.current_segment = Segment(mode="terminal")
+        ctx.plan.segments.append(ctx.current_segment)
+
+
+def _add_command(name: str, args: list[str], line_num: int, ctx: _ParseContext):
+    """Add a command to the current segment."""
+    _ensure_segment(ctx)
+    cmd = Command(name=name, args=args, line_num=line_num)
+    cmd_index = len(ctx.current_segment.commands)
+    ctx.current_segment.commands.append(cmd)
+
+    if ctx.pending_narration:
+        ctx.current_segment.narrations[cmd_index] = ctx.pending_narration
+        ctx.pending_narration = None
+
+
+def parse_script(path: Path) -> Plan:
+    """Parse a .demorec script file into an execution plan."""
+    ctx = _ParseContext(plan=Plan())
 
     with open(path) as f:
         lines = f.readlines()
 
     for line_num, line in enumerate(lines, 1):
         line = line.strip()
-
-        # Skip empty lines
         if not line:
             continue
 
-        # Handle narration comments: # @narrate:before "text"
         if line.startswith("#"):
-            narrate_match = re.match(r"#\s*@narrate:(before|during|after)\s+(.+)", line)
-            if narrate_match:
-                mode = narrate_match.group(1)
-                text = parse_string(narrate_match.group(2).strip())
-                pending_narration = Narration(mode=mode, text=text, line_num=line_num)
-                continue
-
-            # Handle voice directive: # @voice eleven:rachel
-            voice_match = re.match(r"#\s*@voice\s+(\S+)", line)
-            if voice_match:
-                plan.voice = voice_match.group(1)
-                continue
-
-            # Regular comment - skip
+            _parse_comment(line, line_num, ctx)
             continue
 
-        # Tokenize the line
         tokens = tokenize_line(line)
         if not tokens:
             continue
 
-        cmd_name = tokens[0]
-        cmd_args = [parse_string(t) for t in tokens[1:]]
+        cmd_name, cmd_args = tokens[0], [parse_string(t) for t in tokens[1:]]
 
-        # Handle global directives
-        if cmd_name == "Output":
-            if cmd_args:
-                plan.output = Path(cmd_args[0])
-            continue
+        if cmd_name == "Output" and cmd_args:
+            ctx.plan.output = Path(cmd_args[0])
+        elif cmd_name == "Set":
+            _handle_set_directive(cmd_args, line_num, ctx)
+        elif cmd_name == "@mode":
+            _handle_mode_switch(cmd_args, ctx)
+        else:
+            _add_command(cmd_name, cmd_args, line_num, ctx)
 
-        if cmd_name == "Set":
-            if len(cmd_args) >= 2:
-                key = cmd_args[0].lower()
-                val = cmd_args[1]
-                if key == "width":
-                    plan.width = int(val)
-                elif key == "height":
-                    plan.height = int(val)
-                elif key == "framerate":
-                    plan.framerate = int(val)
-                elif key == "theme" and current_segment:
-                    # Theme is segment-specific for terminal
-                    current_segment.commands.append(Command("SetTheme", [val], line_num))
-            continue
-
-        # Handle mode switch
-        if cmd_name == "@mode":
-            if cmd_args:
-                mode = cmd_args[0].lower()
-                if mode in ("terminal", "browser"):
-                    current_segment = Segment(mode=mode)
-                    plan.segments.append(current_segment)
-            continue
-
-        # All other commands require an active segment
-        if current_segment is None:
-            # Default to terminal mode
-            current_segment = Segment(mode="terminal")
-            plan.segments.append(current_segment)
-
-        # Create the command
-        cmd = Command(name=cmd_name, args=cmd_args, line_num=line_num)
-        cmd_index = len(current_segment.commands)
-        current_segment.commands.append(cmd)
-
-        # Attach pending narration to this command
-        if pending_narration:
-            current_segment.narrations[cmd_index] = pending_narration
-            pending_narration = None
-
-    return plan
+    return ctx.plan

@@ -1,9 +1,17 @@
-"""End-to-end tests for browser mode recording and mode switching."""
+"""End-to-end tests for browser mode recording and mode switching.
+
+These tests spawn real subprocesses and have long timeouts.
+Run with: pytest -m e2e
+Skip with: pytest -m "not e2e"
+"""
 
 import pytest
 import subprocess
 import tempfile
 from pathlib import Path
+
+# Mark all tests in this module as e2e and slow
+pytestmark = [pytest.mark.e2e, pytest.mark.slow]
 
 
 def run_demorec(script_content: str, output_name: str = "test_output.mp4"):

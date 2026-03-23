@@ -60,3 +60,10 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+markers = [
+    "e2e: end-to-end tests that spawn subprocesses (deselect with '-m \"not e2e\"')",
+    "slow: tests that take more than a few seconds",
+]
+testpaths = ["tests"]

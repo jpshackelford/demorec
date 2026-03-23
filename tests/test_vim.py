@@ -8,10 +8,6 @@ from demorec.modes.vim import (
     VimCommandExpander,
     VimNotFoundError,
     check_vim_available,
-    generate_open_commands,
-    generate_highlight_commands,
-    generate_close_commands,
-    generate_goto_commands,
 )
 
 
@@ -35,6 +31,25 @@ class TestVimNotFoundError:
         with patch("shutil.which", return_value="/usr/bin/vim"):
             # Should not raise
             check_vim_available()
+    
+    def test_check_vim_available_real_system(self):
+        """Test actual vim availability on the system (no mocking).
+        
+        This test verifies the real code path works, not just mocks.
+        If vim is installed, it should pass. If not, it should raise
+        VimNotFoundError with helpful install instructions.
+        """
+        import shutil
+        vim_path = shutil.which("vim")
+        
+        if vim_path:
+            # Vim is installed - check_vim_available should succeed
+            check_vim_available()  # Should not raise
+        else:
+            # Vim is not installed - should raise with install instructions
+            with pytest.raises(VimNotFoundError) as exc_info:
+                check_vim_available()
+            assert "apt-get install vim" in str(exc_info.value)
 
 
 class TestVimState:
@@ -54,13 +69,13 @@ class TestVimState:
         assert state.terminal_rows == 30
 
 
-class TestGenerateOpenCommands:
-    """Test generate_open_commands function."""
+class TestVimStateOpen:
+    """Test VimState.open() method."""
     
     def test_opens_file_with_line_numbers(self):
         """Should generate commands to open file and enable line numbers."""
         state = VimState()
-        commands = generate_open_commands("src/api.py", state)
+        commands = state.open("src/api.py")
         
         # Should have: vim command, ENTER, :set number, ENTER
         assert len(commands) == 4
@@ -72,20 +87,20 @@ class TestGenerateOpenCommands:
     def test_updates_state(self):
         """Should update state after opening file."""
         state = VimState()
-        generate_open_commands("test.py", state)
+        state.open("test.py")
         
         assert state.file_path == "test.py"
         assert state.current_line == 1
         assert state.in_visual_mode is False
 
 
-class TestGenerateHighlightCommands:
-    """Test generate_highlight_commands function."""
+class TestVimStateHighlight:
+    """Test VimState.highlight() method."""
     
     def test_single_line_highlight(self):
         """Test highlighting a single line."""
         state = VimState(terminal_rows=24)
-        commands = generate_highlight_commands("10", state)
+        commands = state.highlight("10")
         
         # Should navigate to line and enter visual mode
         assert any("10G" in cmd[0] for cmd in commands)
@@ -94,7 +109,7 @@ class TestGenerateHighlightCommands:
     def test_range_highlight(self):
         """Test highlighting a range of lines."""
         state = VimState(terminal_rows=30)
-        commands = generate_highlight_commands("6-8", state)
+        commands = state.highlight("6-8")
         
         # Should navigate to start, enter visual mode, extend to end
         assert any("6G" in cmd[0] for cmd in commands)
@@ -104,7 +119,7 @@ class TestGenerateHighlightCommands:
     def test_updates_visual_mode_state(self):
         """Should set in_visual_mode to True after highlight."""
         state = VimState()
-        generate_highlight_commands("10-20", state)
+        state.highlight("10-20")
         
         assert state.in_visual_mode is True
         assert state.current_line == 20
@@ -114,7 +129,7 @@ class TestGenerateHighlightCommands:
         state = VimState()
         state.in_visual_mode = True
         
-        commands = generate_highlight_commands("5-10", state)
+        commands = state.highlight("5-10")
         
         # First command should be ESCAPE
         assert commands[0] == ("ESCAPE", 0.2)
@@ -122,7 +137,7 @@ class TestGenerateHighlightCommands:
     def test_centering_auto_small_selection(self):
         """Auto centering should use zz for small selections."""
         state = VimState(terminal_rows=30)
-        commands = generate_highlight_commands("10-12", state, centering="auto")
+        commands = state.highlight("10-12", centering="auto")
         
         # Small selection (3 lines) should use zz (center)
         assert any("zz" in cmd[0] for cmd in commands)
@@ -130,7 +145,7 @@ class TestGenerateHighlightCommands:
     def test_centering_auto_large_selection(self):
         """Auto centering should use zt for large selections."""
         state = VimState(terminal_rows=24)
-        commands = generate_highlight_commands("10-30", state, centering="auto")
+        commands = state.highlight("10-30", centering="auto")
         
         # Large selection (21 lines) should use zt (top)
         assert any("zt" in cmd[0] for cmd in commands)
@@ -138,32 +153,32 @@ class TestGenerateHighlightCommands:
     def test_centering_explicit_top(self):
         """Explicit top centering should use zt."""
         state = VimState()
-        commands = generate_highlight_commands("15-20", state, centering="top")
+        commands = state.highlight("15-20", centering="top")
         
         assert any("zt" in cmd[0] for cmd in commands)
     
     def test_centering_explicit_center(self):
         """Explicit center centering should use zz."""
         state = VimState()
-        commands = generate_highlight_commands("15-20", state, centering="center")
+        commands = state.highlight("15-20", centering="center")
         
         assert any("zz" in cmd[0] for cmd in commands)
     
     def test_centering_explicit_bottom(self):
         """Explicit bottom centering should use zb."""
         state = VimState()
-        commands = generate_highlight_commands("15-20", state, centering="bottom")
+        commands = state.highlight("15-20", centering="bottom")
         
         assert any("zb" in cmd[0] for cmd in commands)
 
 
-class TestGenerateCloseCommands:
-    """Test generate_close_commands function."""
+class TestVimStateClose:
+    """Test VimState.close() method."""
     
     def test_close_from_normal_mode(self):
         """Should generate :q! command to exit."""
         state = VimState()
-        commands = generate_close_commands(state)
+        commands = state.close()
         
         assert any(":q!" in cmd[0] for cmd in commands)
         assert any("ENTER" in cmd[0] for cmd in commands)
@@ -173,7 +188,7 @@ class TestGenerateCloseCommands:
         state = VimState()
         state.in_visual_mode = True
         
-        commands = generate_close_commands(state)
+        commands = state.close()
         
         # Should start with ESCAPE to exit visual mode
         assert commands[0] == ("ESCAPE", 0.2)
@@ -184,19 +199,19 @@ class TestGenerateCloseCommands:
         state.file_path = "test.py"
         state.current_line = 50
         
-        generate_close_commands(state)
+        state.close()
         
         assert state.file_path is None
         assert state.current_line == 1
 
 
-class TestGenerateGotoCommands:
-    """Test generate_goto_commands function."""
+class TestVimStateGoto:
+    """Test VimState.goto() method."""
     
     def test_goto_with_center(self):
         """Should generate goto and zz for center."""
         state = VimState()
-        commands = generate_goto_commands(25, state, centering="center")
+        commands = state.goto(25, centering="center")
         
         assert any("25G" in cmd[0] for cmd in commands)
         assert any("zz" in cmd[0] for cmd in commands)
@@ -204,7 +219,7 @@ class TestGenerateGotoCommands:
     def test_goto_updates_current_line(self):
         """Should update current_line in state."""
         state = VimState()
-        generate_goto_commands(42, state)
+        state.goto(42)
         
         assert state.current_line == 42
 

@@ -205,32 +205,6 @@ class VimState:
         return commands
 
 
-# Backward compatibility: module-level functions that delegate to VimState
-# These maintain the existing API while state mutation is now explicit in VimState
-def generate_open_commands(file_path: str, state: VimState) -> list[tuple[str, float]]:
-    """Generate commands to open a file in vim. Delegates to state.open()."""
-    return state.open(file_path)
-
-
-def generate_highlight_commands(
-    line_range: str, 
-    state: VimState,
-    centering: str = "auto"
-) -> list[tuple[str, float]]:
-    """Generate highlight commands. Delegates to state.highlight()."""
-    return state.highlight(line_range, centering)
-
-
-def generate_close_commands(state: VimState) -> list[tuple[str, float]]:
-    """Generate close commands. Delegates to state.close()."""
-    return state.close()
-
-
-def generate_goto_commands(line: int, state: VimState, centering: str = "center") -> list[tuple[str, float]]:
-    """Generate goto commands. Delegates to state.goto()."""
-    return state.goto(line, centering)
-
-
 class VimCommandExpander:
     """Expands high-level vim commands into low-level terminal commands.
     

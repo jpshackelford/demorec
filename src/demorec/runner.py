@@ -1,5 +1,7 @@
 """Main runner that orchestrates recording across modes."""
 
+import json
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -124,7 +126,6 @@ class Runner:
                 self._mix_audio_timed(concat_output, self.plan.output)
                 progress.update(task, completed=True)
             else:
-                import shutil
                 shutil.copy(concat_output, self.plan.output)
     
     def _generate_narration(self):
@@ -248,7 +249,6 @@ class Runner:
     def _mix_audio_timed(self, video_path: Path, output: Path):
         """Mix narration audio with video at correct timestamps."""
         if not self.timed_narrations:
-            import shutil
             shutil.copy(video_path, output)
             return
         
@@ -294,7 +294,6 @@ class Runner:
     
     def _get_duration(self, media_path: Path) -> float:
         """Get duration of a media file in seconds."""
-        import json
         cmd = [
             "ffprobe", "-v", "quiet",
             "-print_format", "json",
@@ -309,6 +308,5 @@ class Runner:
     
     def cleanup(self):
         """Remove temporary files."""
-        import shutil
         if self.temp_dir.exists():
             shutil.rmtree(self.temp_dir)

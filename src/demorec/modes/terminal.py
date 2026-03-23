@@ -340,8 +340,62 @@ class TerminalRecorder:
             if delay > 0:
                 await asyncio.sleep(delay)
     
+    # Command handlers - each returns an awaitable
+    async def _cmd_type(self, page, cmd: Command):
+        if cmd.args:
+            await self._send_keys(page, cmd.args[0])
+
+    async def _cmd_enter(self, page, cmd: Command):
+        await page.keyboard.press("Enter")
+        await asyncio.sleep(0.3)
+
+    async def _cmd_run(self, page, cmd: Command):
+        if cmd.args:
+            await self._send_keys(page, cmd.args[0])
+            await page.keyboard.press("Enter")
+            wait_time = parse_time(cmd.args[1]) if len(cmd.args) > 1 else 1.0
+            await asyncio.sleep(wait_time)
+
+    async def _cmd_sleep(self, page, cmd: Command):
+        if cmd.args:
+            await asyncio.sleep(parse_time(cmd.args[0]))
+
+    async def _cmd_keypress(self, page, cmd: Command, key: str, delay: float = 0.1):
+        """Generic key press handler."""
+        await page.keyboard.press(key)
+        await asyncio.sleep(delay)
+
+    async def _cmd_backspace(self, page, cmd: Command):
+        count = int(cmd.args[0]) if cmd.args else 1
+        for _ in range(count):
+            await page.keyboard.press("Backspace")
+            await asyncio.sleep(0.05)
+
+    def _build_command_handlers(self):
+        """Build command dispatch table. O(1) lookup instead of O(N) elif chain."""
+        return {
+            "SetTheme": lambda page, cmd: asyncio.sleep(0),  # No-op, processed earlier
+            "Type": self._cmd_type,
+            "Enter": self._cmd_enter,
+            "Run": self._cmd_run,
+            "Sleep": self._cmd_sleep,
+            "Ctrl+C": lambda page, cmd: self._cmd_keypress(page, cmd, "Control+c"),
+            "Ctrl+D": lambda page, cmd: self._cmd_keypress(page, cmd, "Control+d"),
+            "Ctrl+L": lambda page, cmd: self._cmd_keypress(page, cmd, "Control+l"),
+            "Ctrl+Z": lambda page, cmd: self._cmd_keypress(page, cmd, "Control+z"),
+            "Tab": lambda page, cmd: self._cmd_keypress(page, cmd, "Tab", 0.2),
+            "Up": lambda page, cmd: self._cmd_keypress(page, cmd, "ArrowUp"),
+            "Down": lambda page, cmd: self._cmd_keypress(page, cmd, "ArrowDown"),
+            "Backspace": self._cmd_backspace,
+            "Escape": lambda page, cmd: self._cmd_keypress(page, cmd, "Escape"),
+            "Space": lambda page, cmd: self._cmd_keypress(page, cmd, "Space", 0.05),
+            "Clear": lambda page, cmd: self._cmd_keypress(page, cmd, "Control+l"),
+        }
+
     async def _execute_command(self, page, cmd: Command):
         """Execute a single command in the terminal.
+        
+        Uses dispatch table for O(1) command lookup instead of elif chain.
         
         Args:
             page: Playwright page object
@@ -353,131 +407,68 @@ class TerminalRecorder:
             await self._execute_vim_sequence(page, expanded)
             return
         
-        if cmd.name == "SetTheme":
-            pass  # Processed earlier
-        
-        elif cmd.name == "Type":
-            if cmd.args:
-                await self._send_keys(page, cmd.args[0])
-        
-        elif cmd.name == "Enter":
-            await page.keyboard.press("Enter")
-            await asyncio.sleep(0.3)
-        
-        elif cmd.name == "Run":
-            if cmd.args:
-                await self._send_keys(page, cmd.args[0])
-                await page.keyboard.press("Enter")
-                wait_time = parse_time(cmd.args[1]) if len(cmd.args) > 1 else 1.0
-                await asyncio.sleep(wait_time)
-        
-        elif cmd.name == "Sleep":
-            if cmd.args:
-                await asyncio.sleep(parse_time(cmd.args[0]))
-        
-        elif cmd.name == "Ctrl+C":
-            await page.keyboard.press("Control+c")
-            await asyncio.sleep(0.1)
-        
-        elif cmd.name == "Ctrl+D":
-            await page.keyboard.press("Control+d")
-            await asyncio.sleep(0.1)
-        
-        elif cmd.name == "Ctrl+L":
-            await page.keyboard.press("Control+l")
-            await asyncio.sleep(0.1)
-        
-        elif cmd.name == "Ctrl+Z":
-            await page.keyboard.press("Control+z")
-            await asyncio.sleep(0.1)
-        
-        elif cmd.name == "Tab":
-            await page.keyboard.press("Tab")
-            await asyncio.sleep(0.2)
-        
-        elif cmd.name == "Up":
-            await page.keyboard.press("ArrowUp")
-            await asyncio.sleep(0.1)
-        
-        elif cmd.name == "Down":
-            await page.keyboard.press("ArrowDown")
-            await asyncio.sleep(0.1)
-        
-        elif cmd.name == "Backspace":
-            count = int(cmd.args[0]) if cmd.args else 1
-            for _ in range(count):
-                await page.keyboard.press("Backspace")
-                await asyncio.sleep(0.05)
-        
-        elif cmd.name == "Escape":
-            await page.keyboard.press("Escape")
-            await asyncio.sleep(0.1)
-        
-        elif cmd.name == "Space":
-            await page.keyboard.press("Space")
-            await asyncio.sleep(0.05)
-        
-        elif cmd.name == "Clear":
-            await page.keyboard.press("Control+l")
-            await asyncio.sleep(0.1)
+        # Dispatch table lookup
+        handlers = self._build_command_handlers()
+        handler = handlers.get(cmd.name)
+        if handler:
+            await handler(page, cmd)
+
+    def _size_matches_expected(self, current: dict, expected: dict | None) -> bool:
+        """Check if current size matches expected dimensions."""
+        if not expected:
+            return True
+        expected_rows = expected.get('rows')
+        expected_cols = expected.get('cols')
+        if expected_rows and current['rows'] != expected_rows:
+            return False
+        if expected_cols and current['cols'] != expected_cols:
+            return False
+        return True
+
+    def _size_is_stable(self, current: dict, last: dict | None) -> bool:
+        """Check if size is stable (matches last check)."""
+        if not last:
+            return False
+        return current['rows'] == last['rows'] and current['cols'] == last['cols']
+
+    async def _get_terminal_size(self, page) -> dict | None:
+        """Query terminal size via xterm.js API."""
+        return await page.evaluate("""() => {
+            if (!window.term) return null;
+            return {
+                rows: window.term.rows,
+                cols: window.term.cols,
+                bufferReady: window.term.buffer && window.term.buffer.active !== undefined
+            };
+        }""")
 
     async def _wait_for_terminal_ready(self, page, expected_size: dict | None,
                                        stable_checks: int = 3, check_interval: float = 0.3,
                                        max_wait: float = 5.0):
         """Wait for terminal to report stable dimensions before recording.
         
-        The terminal is considered "ready" when:
-        1. It reports consistent rows/cols for several consecutive checks
-        2. If expected_size is provided, dimensions match the expected values
-        
-        Args:
-            page: Playwright page object
-            expected_size: Expected {rows, cols} dict (optional)
-            stable_checks: Number of consecutive matching checks required
-            check_interval: Seconds between checks
-            max_wait: Maximum seconds to wait before proceeding anyway
+        Terminal is ready when it reports consistent rows/cols for
+        `stable_checks` consecutive checks, matching expected_size if provided.
         """
         start_time = time.time()
         consecutive_matches = 0
         last_size = None
-        expected_rows = expected_size.get('rows') if expected_size else None
-        expected_cols = expected_size.get('cols') if expected_size else None
         
         while time.time() - start_time < max_wait:
-            # Query terminal size via xterm.js API
-            current_size = await page.evaluate("""() => {
-                if (!window.term) return null;
-                return {
-                    rows: window.term.rows,
-                    cols: window.term.cols,
-                    bufferReady: window.term.buffer && window.term.buffer.active !== undefined
-                };
-            }""")
+            current_size = await self._get_terminal_size(page)
             
             if not current_size:
                 await asyncio.sleep(check_interval)
                 continue
             
-            # Check if size matches expected (if specified)
-            size_matches_expected = True
-            if expected_rows and current_size['rows'] != expected_rows:
-                size_matches_expected = False
-            if expected_cols and current_size['cols'] != expected_cols:
-                size_matches_expected = False
-            
-            # Check if size is stable (matches last check)
-            size_is_stable = (
-                last_size is not None and
-                current_size['rows'] == last_size['rows'] and
-                current_size['cols'] == last_size['cols']
+            is_ready = (
+                self._size_is_stable(current_size, last_size) and
+                self._size_matches_expected(current_size, expected_size)
             )
             
-            if size_is_stable and size_matches_expected:
-                consecutive_matches += 1
-                if consecutive_matches >= stable_checks:
-                    return  # Terminal is ready!
-            else:
-                consecutive_matches = 0
+            consecutive_matches = consecutive_matches + 1 if is_ready else 0
+            if consecutive_matches >= stable_checks:
+                return
             
             last_size = current_size
             await asyncio.sleep(check_interval)

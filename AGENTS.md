@@ -1,166 +1,171 @@
 # demorec Development Guide
 
-This file contains instructions for AI agents (and humans) working on the demorec codebase.
+Instructions for AI agents (and humans) working on the demorec codebase.
 
 ## Project Overview
 
-demorec is a terminal and browser recording tool that creates demo videos with narration.
-It supports high-level primitives for vim-based code review videos.
+**demorec** creates terminal and browser demo videos with narration. It supports
+high-level vim primitives for code review videos (Open, Highlight, Goto, Close).
 
-## Development Tools Summary
-
-| Tool | Purpose | Command |
-|------|---------|---------|
-| **pytest** | Testing | `pytest tests/` |
-| **ruff** | Linting + import sorting | `ruff check src/ tests/` |
-| **xenon** | Complexity threshold enforcement | `xenon --max-absolute C --max-modules A --max-average A src/demorec/` |
-| **check_function_length.py** | Function line count | `python scripts/check_function_length.py src/ --warn 15 --error 25` |
-
-## Standard Development Workflow
-
-Before committing changes, run:
-```bash
-# 1. Lint and auto-fix
-ruff check --fix src/ tests/
-
-# 2. Run tests
-pytest tests/
-
-# 3. Check complexity
-xenon --max-absolute C --max-modules A --max-average A src/demorec/
-
-# 4. Check function lengths
-python scripts/check_function_length.py src/ --warn 15 --error 25
-```
-
-## Quick Start
+## Quick Reference
 
 ```bash
-# Install in development mode
+# Install
 pip install -e ".[dev]"
 
-# Run all tests
-pytest tests/
+# Pre-commit checks (run all before committing)
+ruff check --fix src/ && ruff format src/ && pytest tests/ -q
 
-# Lint code
-ruff check src/ tests/
-
-# Run the CLI
-demorec --help
-demorec record script.demorec
+# Quality checks
+xenon --max-absolute C --max-modules A --max-average A src/demorec/
+python scripts/check_function_length.py src/ --warn 8 --error 12
 ```
 
 ## Project Structure
 
 ```
 src/demorec/
-├── __init__.py      # Package version
-├── __main__.py      # Entry point for `python -m demorec`
-├── cli.py           # Click CLI commands (record, stage, preview, checkpoints)
-├── parser.py        # Script parsing (.demorec files)
-├── runner.py        # Recording orchestration, audio mixing, SRT generation
-├── tts.py           # Text-to-speech integration (edge-tts)
-├── preview.py       # Checkpoint verification system
-├── stage.py         # Stage direction calculator for vim
-└── modes/           # Recording mode implementations
-    ├── __init__.py
-    ├── browser.py   # Browser recording with Playwright
-    ├── terminal.py  # Terminal recording with ttyd
-    └── vim.py       # Vim command primitives (Open, Highlight, Close, Goto)
-
-tests/
-├── conftest.py      # Pytest config
-├── test_parser.py   # Script parsing tests
-├── test_runner.py   # Runner tests
-├── test_tts.py      # TTS tests
-└── ...
+├── cli.py           # Click CLI (record, stage, preview, checkpoints)
+├── parser.py        # .demorec script parsing
+├── runner.py        # Recording orchestration, audio mixing, SRT
+├── tts.py           # Text-to-speech (edge-tts)
+├── preview.py       # Checkpoint verification
+├── stage.py         # Vim stage direction calculator
+└── modes/
+    ├── browser.py   # Browser recording (Playwright)
+    ├── terminal.py  # Terminal recording (ttyd)
+    └── vim.py       # Vim primitives (VimCommandExpander)
 ```
 
 ## Code Quality Thresholds
 
-**Complexity (enforced by xenon):**
-- Individual functions: max complexity C (11-20)
-- Module average: A
-- Absolute max: C
+| Check | Threshold | Command |
+|-------|-----------|---------|
+| Lint | Must pass | `ruff check src/` |
+| Format | Must pass | `ruff format --check src/` |
+| Complexity | Max C (11-20) | `xenon --max-absolute C --max-modules A --max-average A src/demorec/` |
+| Function Length | Warn >8, Error >12 | `python scripts/check_function_length.py src/ --warn 8 --error 12` |
+| File Length | Warn >200, Error >400 | `python scripts/check_file_length.py src/ --warn 200 --error 400` |
 
-**Function Length (enforced by check_function_length.py):**
-- ✓ OK: ≤15 logic lines
-- ⚠ WARNING: 16-25 logic lines
-- ✗ ERROR: >25 logic lines
+### Function Length Rules
 
-**⚠️ THRESHOLD CHANGE POLICY:**
-> AI agents **MUST NOT** change these thresholds without explicit human approval.
+Logic lines counted (excludes docstrings, comments, blanks, logging):
+- ✓ **OK**: ≤8 lines (ideal)
+- ⚠ **Warning**: 9-12 lines (consider refactoring)
+- ✗ **Error**: >12 lines (must fix)
+
+**Exemption marker** (use sparingly, requires justification):
+```python
+def complex_but_necessary():  # length-ok
+    """Explain why this can't be split."""
+    ...
+```
+
+### File Length Rules
+
+Non-blank lines counted:
+- ✓ **OK**: ≤200 lines (single responsibility)
+- ⚠ **Warning**: 201-400 lines (consider splitting)
+- ✗ **Error**: >400 lines (must split)
+
+### Complexity Grades (Cyclomatic)
+
+- **A** (1-5): Simple - target for most functions
+- **B** (6-10): Low - acceptable
+- **C** (11-20): Moderate - maximum allowed
+- **D+** (21+): High - blocked by CI
+
+## ⚠️ Threshold Policy
+
+> **AI agents MUST NOT change quality thresholds without explicit human approval.**
 >
-> To request a threshold change:
-> 1. Run the checker and present ALL functions exceeding the current thresholds
-> 2. Explain why each function cannot be reasonably refactored
-> 3. Wait for explicit human approval before modifying thresholds
+> To request changes:
+> 1. Show ALL functions exceeding thresholds
+> 2. Explain why each cannot be reasonably refactored
+> 3. Wait for human approval
+
+## Refactoring Patterns
+
+When functions exceed thresholds, use these patterns:
+
+### 1. Dispatch Tables
+Replace long if/elif chains:
+```python
+# Before
+def handle(cmd):
+    if cmd == "open": ...
+    elif cmd == "close": ...
+
+# After
+HANDLERS = {"open": _handle_open, "close": _handle_close}
+def handle(cmd):
+    return HANDLERS[cmd]()
+```
+
+### 2. Extract Helpers
+Break into focused sub-functions:
+```python
+# Before: 30-line function
+def process():
+    # parse input (10 lines)
+    # transform data (10 lines)
+    # format output (10 lines)
+
+# After: 3 small functions
+def process():
+    data = _parse_input()
+    result = _transform(data)
+    return _format_output(result)
+```
+
+### 3. Class-Based State
+For complex parsing/state management:
+```python
+class _Tokenizer:
+    def __init__(self, text): ...
+    def next_token(self): ...  # Small, focused method
+```
 
 ## Key Design Patterns
 
-### Recording Modes
-
-Each recording mode (browser, terminal) implements:
-- `record_segment()` - Records a segment of the demo
-- Mode-specific setup and teardown
-
 ### Vim Primitives
-
-High-level vim commands are expanded by `VimCommandExpander`:
-- `Open "file.py"` → vim command with line numbers
-- `Highlight "10-20"` → goto + visual mode selection
-- `Goto 50` → jump to line with centering
-- `Close` → exit vim cleanly
+`VimCommandExpander` translates high-level commands to keystrokes:
+- `Open "file.py"` → `vim file.py` + `:set number`
+- `Highlight "10-20"` → `10G` + `V` + `20G`
+- `Goto 50` → `50Gzz`
+- `Close` → `Escape` + `:q!`
 
 ### Terminal Sizing
-
-Terminal size is controlled via:
-- `@terminal:rows N` - Set to specific row count
-- `@terminal:size large|medium|small|tiny` - Preset sizes
-- Font size is adjusted automatically to achieve target rows
+- `@terminal:rows N` - Set specific row count
+- `@terminal:size large|medium|small|tiny` - Presets
+- Font auto-adjusts via `term.fit()`
 
 ### Narration Timing
-
-Narration can be placed:
 - `# @narrate:before "text"` - Before command
-- `# @narrate:during "text"` - During command
+- `# @narrate:during "text"` - During command  
 - `# @narrate:after "text"` - After command
 
-Audio is mixed at correct timestamps using ffmpeg.
+## CI Pipeline
 
-## Common Tasks
+All checks must pass:
+1. **Lint** - `ruff check src/`
+2. **Format** - `ruff format --check src/`
+3. **Tests** - `pytest` (Python 3.10, 3.11, 3.12)
+4. **Complexity** - `xenon`
+5. **Function Length** - `check_function_length.py`
 
-### Adding a New CLI Command
-
-1. Add command to `src/demorec/cli.py`
-2. Add tests to `tests/`
-3. Run `pytest tests/ && ruff check src/`
-
-### Adding a New Vim Primitive
-
-1. Add generator function in `src/demorec/modes/vim.py`
-2. Register in `VimCommandExpander.expand_command()`
-3. Add tests
-
-### Running a Demo Recording
+## Common Commands
 
 ```bash
-# Basic recording
+# Record a demo
 demorec record script.demorec -o output.mp4
 
-# Preview checkpoints without recording
+# Preview without recording
 demorec preview script.demorec
 
-# Calculate stage directions
+# Calculate vim stage directions
 demorec stage file.py "10-20,30-40" --rows 30
+
+# Show all checkpoints
+demorec checkpoints script.demorec
 ```
-
-## Continuous Integration
-
-CI runs on every PR:
-1. **Lint** - `ruff check src/`
-2. **Tests** - `pytest tests/` (Python 3.10, 3.11, 3.12)
-3. **Complexity** - `xenon --max-absolute C ...`
-4. **Function Length** - `python scripts/check_function_length.py ...`
-
-All checks must pass before merging.

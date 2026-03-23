@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build-and-upload:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build package
+        run: |
+          python -m build
+          ls -la dist/
+
+      - name: Upload wheel to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ needs.release-please.outputs.tag_name }} dist/*.whl dist/*.tar.gz
+
+      - name: Add installation instructions to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CURRENT_BODY=$(gh release view ${{ needs.release-please.outputs.tag_name }} --json body -q '.body')
+
+          gh release edit ${{ needs.release-please.outputs.tag_name }} --notes "${CURRENT_BODY}
+
+          ---
+
+          ## 🎬 Installation
+
+          **Install latest (recommended):**
+          \`\`\`bash
+          pip install git+https://github.com/${{ github.repository }}.git
+          \`\`\`
+
+          **Install this specific version:**
+          \`\`\`bash
+          pip install git+https://github.com/${{ github.repository }}.git@${{ needs.release-please.outputs.tag_name }}
+          \`\`\`
+
+          **From wheel:**
+          \`\`\`bash
+          # Download the .whl file from Assets below, then:
+          pip install ./demorec-${{ needs.release-please.outputs.version }}-py3-none-any.whl
+          \`\`\`
+
+          ## Usage
+          \`\`\`bash
+          demorec --help       # Show available commands
+          demorec run demo.demorec  # Run a demo script
+          \`\`\`
+          "
+
+      - name: Summary
+        run: |
+          echo "## 🎬 Release ${{ needs.release-please.outputs.tag_name }} Published!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.release-please.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Install with:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "pip install git+https://github.com/${{ github.repository }}.git" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

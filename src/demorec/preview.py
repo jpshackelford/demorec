@@ -18,6 +18,7 @@ from .stage import Checkpoint
 @dataclass
 class CheckpointResult:
     """Result of verifying a checkpoint."""
+
     checkpoint: Checkpoint
     passed: bool
     expected_lines: tuple[int, int] | None
@@ -29,6 +30,7 @@ class CheckpointResult:
 @dataclass
 class PreviewResult:
     """Overall result of preview run."""
+
     total: int
     passed: int
     failed: int
@@ -44,7 +46,7 @@ class TerminalPreviewer:
         rows: int = 30,
         width: int = 1280,
         height: int = 720,
-        screenshots: str = "on_error"  # "always", "never", "on_error"
+        screenshots: str = "on_error",  # "always", "never", "on_error"
     ):
         self.rows = rows
         self.width = width
@@ -57,10 +59,7 @@ class TerminalPreviewer:
         return asyncio.run(self._preview_async(script_path, segment, output_dir))
 
     async def _preview_async(
-        self,
-        script_path: Path,
-        segment,
-        output_dir: Path | None
+        self, script_path: Path, segment, output_dir: Path | None
     ) -> PreviewResult:
         from playwright.async_api import async_playwright
 
@@ -111,8 +110,14 @@ class TerminalPreviewer:
 
         # Start ttyd with bash --norc --noprofile to avoid loading any shell configs
         ttyd_cmd = [
-            ttyd_path, "-p", str(port), "--writable", "--once",
-            "/bin/bash", "--norc", "--noprofile"
+            ttyd_path,
+            "-p",
+            str(port),
+            "--writable",
+            "--once",
+            "/bin/bash",
+            "--norc",
+            "--noprofile",
         ]
         self._ttyd_process = subprocess.Popen(
             ttyd_cmd,
@@ -142,9 +147,7 @@ class TerminalPreviewer:
                 await self._setup_terminal(page)
 
                 # Build checkpoint lookup by command index
-                checkpoint_map: dict[int, Checkpoint] = {
-                    cp.command_index: cp for cp in checkpoints
-                }
+                checkpoint_map: dict[int, Checkpoint] = {cp.command_index: cp for cp in checkpoints}
 
                 # Execute commands, pausing at checkpoints
                 for cmd_idx, cmd in enumerate(segment.commands):
@@ -180,7 +183,7 @@ class TerminalPreviewer:
             passed=passed,
             failed=failed,
             results=results,
-            screenshot_dir=screenshot_dir if results else None
+            screenshot_dir=screenshot_dir if results else None,
         )
 
     def _detect_checkpoints_from_commands(self, commands) -> list[Checkpoint]:
@@ -206,7 +209,7 @@ class TerminalPreviewer:
                 typed = cmd.args[0]
 
                 # Detect goto (e.g., "6G", "27G")
-                goto_match = re.match(r'^(\d+)G', typed)
+                goto_match = re.match(r"^(\d+)G", typed)
                 if goto_match:
                     pending_goto = int(goto_match.group(1))
                     last_goto_idx = i
@@ -223,13 +226,15 @@ class TerminalPreviewer:
 
                     # Checkpoint is at the last goto before Escape (selection end)
                     # We use command index as line_number for simplicity
-                    checkpoints.append(Checkpoint(
-                        line_number=last_goto_idx,
-                        command_index=last_goto_idx,
-                        event_type="visual_selection",
-                        description=f"Visual selection: lines {start}-{end}",
-                        expected_highlight=(start, end)
-                    ))
+                    checkpoints.append(
+                        Checkpoint(
+                            line_number=last_goto_idx,
+                            command_index=last_goto_idx,
+                            event_type="visual_selection",
+                            description=f"Visual selection: lines {start}-{end}",
+                            expected_highlight=(start, end),
+                        )
+                    )
 
                 in_visual_mode = False
                 visual_start_line = None
@@ -239,7 +244,8 @@ class TerminalPreviewer:
     async def _setup_terminal(self, page):
         """Set up terminal with proper sizing."""
         # Calculate desired rows and set up terminal
-        await page.evaluate("""(config) => {
+        await page.evaluate(
+            """(config) => {
             if (!window.term) return null;
 
             const container = document.querySelector('.xterm');
@@ -261,11 +267,14 @@ class TerminalPreviewer:
             term.fit();
 
             return { rows: term.rows, cols: term.cols };
-        }""", {"fontSize": 14, "fontFamily": "Monaco, 'Courier New', monospace"})
+        }""",
+            {"fontSize": 14, "fontFamily": "Monaco, 'Courier New', monospace"},
+        )
 
         # Iteratively adjust font size to get desired rows
         for _ in range(10):
-            term_size = await page.evaluate("""(desiredRows) => {
+            term_size = await page.evaluate(
+                """(desiredRows) => {
                 if (!window.term) return null;
 
                 const currentRows = term.rows;
@@ -283,11 +292,13 @@ class TerminalPreviewer:
                 }
 
                 return { rows: term.rows, fontSize: newFontSize, done: term.rows === desiredRows };
-            }""", self.rows)
+            }""",
+                self.rows,
+            )
 
             await asyncio.sleep(0.1)
 
-            if term_size and term_size.get('done'):
+            if term_size and term_size.get("done"):
                 break
 
         # Clear terminal
@@ -325,11 +336,7 @@ class TerminalPreviewer:
             return float(duration_str)
 
     async def _verify_checkpoint(
-        self,
-        page,
-        checkpoint: Checkpoint,
-        screenshot_dir: Path | None,
-        checkpoint_num: int
+        self, page, checkpoint: Checkpoint, screenshot_dir: Path | None, checkpoint_num: int
     ) -> CheckpointResult:
         """Verify a checkpoint and return result."""
 
@@ -357,7 +364,7 @@ class TerminalPreviewer:
         }""")
 
         # Parse line numbers from visible content
-        visible_line_range = self._extract_line_range(buffer_state.get('visibleLines', []))
+        visible_line_range = self._extract_line_range(buffer_state.get("visibleLines", []))
 
         # Check if expected lines are visible
         expected = checkpoint.expected_highlight
@@ -373,20 +380,17 @@ class TerminalPreviewer:
                 passed = False
                 if expected_start < visible_start:
                     error_message = (
-                        f"Line {expected_start} not visible "
-                        f"(viewport starts at {visible_start})"
+                        f"Line {expected_start} not visible (viewport starts at {visible_start})"
                     )
                 else:
                     error_message = (
-                        f"Line {expected_end} not visible "
-                        f"(viewport ends at {visible_end})"
+                        f"Line {expected_end} not visible (viewport ends at {visible_end})"
                     )
 
         # Capture screenshot if needed
         screenshot_path = None
-        should_screenshot = (
-            self.screenshots == "always" or
-            (self.screenshots == "on_error" and not passed)
+        should_screenshot = self.screenshots == "always" or (
+            self.screenshots == "on_error" and not passed
         )
 
         if should_screenshot and screenshot_dir:
@@ -400,7 +404,7 @@ class TerminalPreviewer:
             expected_lines=expected,
             visible_lines=visible_line_range,
             screenshot_path=screenshot_path,
-            error_message=error_message
+            error_message=error_message,
         )
 
     def _extract_line_range(self, visible_lines: list[str]) -> tuple[int, int] | None:
@@ -412,7 +416,7 @@ class TerminalPreviewer:
 
         for line in visible_lines:
             # Match vim line number format: optional spaces, digits, space
-            match = re.match(r'^\s*(\d+)\s', line)
+            match = re.match(r"^\s*(\d+)\s", line)
             if match:
                 line_numbers.append(int(match.group(1)))
 

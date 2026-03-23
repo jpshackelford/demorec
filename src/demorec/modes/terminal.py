@@ -213,10 +213,10 @@ class TerminalRecorder:
 
     # Size presets: name -> target rows (for 720p viewport)
     SIZE_PRESETS = {
-        "large": 24,   # Classic terminal, easy to read
+        "large": 24,  # Classic terminal, easy to read
         "medium": 36,  # Balanced readability and content
-        "small": 44,   # Default xterm.js density
-        "tiny": 50,    # Maximum content, smaller text
+        "small": 44,  # Default xterm.js density
+        "tiny": 50,  # Maximum content, smaller text
     }
 
     def __init__(
@@ -491,14 +491,21 @@ class TerminalRecorder:
         cmd = ["ffmpeg", "-y"]
         if trim_start > 0:
             cmd.extend(["-ss", f"{trim_start:.2f}"])
-        cmd.extend([
-            "-i", str(webm_path),
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "22",
-            "-pix_fmt", "yuv420p",
-            str(mp4_path),
-        ])
+        cmd.extend(
+            [
+                "-i",
+                str(webm_path),
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-crf",
+                "22",
+                "-pix_fmt",
+                "yuv420p",
+                str(mp4_path),
+            ]
+        )
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"FFmpeg conversion failed: {result.stderr}")

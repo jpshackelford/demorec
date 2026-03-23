@@ -143,10 +143,21 @@ def install():
 
 @main.command()
 @click.option("--rows", "-r", type=int, required=True, help="Terminal rows")
-@click.option("--highlights", "-h", type=str, required=True,
-              help="Line ranges to highlight (e.g., '6-7,11-16,26-34')")
-@click.option("--format", "-f", "output_format", type=click.Choice(["text", "json", "demorec"]),
-              default="text", help="Output format")
+@click.option(
+    "--highlights",
+    "-h",
+    type=str,
+    required=True,
+    help="Line ranges to highlight (e.g., '6-7,11-16,26-34')",
+)
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    type=click.Choice(["text", "json", "demorec"]),
+    default="text",
+    help="Output format",
+)
 def stage(rows: int, highlights: str, output_format: str):
     """Calculate vim stage directions for highlighting code blocks.
 
@@ -180,8 +191,14 @@ def stage(rows: int, highlights: str, output_format: str):
 
 @main.command()
 @click.argument("script", type=click.Path(exists=True, path_type=Path))
-@click.option("--format", "-f", "output_format", type=click.Choice(["text", "json"]),
-              default="text", help="Output format")
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="Output format",
+)
 def checkpoints(script: Path, output_format: str):
     """Detect natural checkpoint locations in a script.
 
@@ -212,10 +229,17 @@ def checkpoints(script: Path, output_format: str):
 @main.command()
 @click.argument("script", type=click.Path(exists=True, path_type=Path))
 @click.option("--rows", "-r", type=int, default=30, help="Terminal rows (default: 30)")
-@click.option("--screenshots/--no-screenshots", default=None,
-              help="Always/never capture screenshots (default: on error only)")
-@click.option("--output-dir", "-o", type=click.Path(path_type=Path),
-              help="Directory for screenshots (default: .demorec_preview)")
+@click.option(
+    "--screenshots/--no-screenshots",
+    default=None,
+    help="Always/never capture screenshots (default: on error only)",
+)
+@click.option(
+    "--output-dir",
+    "-o",
+    type=click.Path(path_type=Path),
+    help="Directory for screenshots (default: .demorec_preview)",
+)
 def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path | None):
     """Preview a script and verify checkpoints.
 

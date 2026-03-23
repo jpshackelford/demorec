@@ -13,6 +13,7 @@ from pathlib import Path
 @dataclass
 class Block:
     """A block of lines to highlight."""
+
     start: int
     end: int
 
@@ -28,6 +29,7 @@ class Block:
 @dataclass
 class StageDirection:
     """Stage direction for a single block."""
+
     block: Block
     needs_scroll: bool
     scroll_to: int | None
@@ -86,7 +88,7 @@ def calculate_visible_range(
 def calculate_stage_directions(
     rows: int,
     highlights: list[Block],
-    overhead: int = 2  # Lines used by prompt/status bar
+    overhead: int = 2,  # Lines used by prompt/status bar
 ) -> list[StageDirection]:
     """Calculate stage directions for highlighting blocks.
 
@@ -109,20 +111,21 @@ def calculate_stage_directions(
         notes = []
 
         # Check if block is fully visible in current view
-        block_visible = (block.start >= current_view_start and
-                        block.end <= current_view_end)
+        block_visible = block.start >= current_view_start and block.end <= current_view_end
 
         if block_visible:
             # No scroll needed
-            directions.append(StageDirection(
-                block=block,
-                needs_scroll=False,
-                scroll_to=None,
-                scroll_method=None,
-                visible_range=(current_view_start, current_view_end),
-                commands=[f"{block.start}GV{block.end}G"],
-                notes=["Visible in current view"]
-            ))
+            directions.append(
+                StageDirection(
+                    block=block,
+                    needs_scroll=False,
+                    scroll_to=None,
+                    scroll_method=None,
+                    visible_range=(current_view_start, current_view_end),
+                    commands=[f"{block.start}GV{block.end}G"],
+                    notes=["Visible in current view"],
+                )
+            )
         else:
             # Need to scroll - center on middle of block
             scroll_to = block.middle
@@ -132,7 +135,7 @@ def calculate_stage_directions(
             new_view = calculate_visible_range(scroll_to, visible_rows, scroll_method)
 
             # Check if block fits after scroll
-            block_fits = (block.start >= new_view[0] and block.end <= new_view[1])
+            block_fits = block.start >= new_view[0] and block.end <= new_view[1]
 
             if not block_fits:
                 # Block is larger than visible area, use top alignment
@@ -142,20 +145,19 @@ def calculate_stage_directions(
                 notes.append("Block larger than view, showing from top")
 
             # Build commands
-            commands = [
-                f"{scroll_to}G{scroll_method}",
-                f"{block.start}GV{block.end}G"
-            ]
+            commands = [f"{scroll_to}G{scroll_method}", f"{block.start}GV{block.end}G"]
 
-            directions.append(StageDirection(
-                block=block,
-                needs_scroll=True,
-                scroll_to=scroll_to,
-                scroll_method=scroll_method,
-                visible_range=new_view,
-                commands=commands,
-                notes=notes if notes else ["Scroll to center block"]
-            ))
+            directions.append(
+                StageDirection(
+                    block=block,
+                    needs_scroll=True,
+                    scroll_to=scroll_to,
+                    scroll_method=scroll_method,
+                    visible_range=new_view,
+                    commands=commands,
+                    notes=notes if notes else ["Scroll to center block"],
+                )
+            )
 
             # Update current view
             current_view_start, current_view_end = new_view
@@ -177,13 +179,11 @@ def format_directions_text(directions: list[StageDirection], rows: int) -> str:
             )
         else:
             vis_start, vis_end = d.visible_range
-            lines.append(
-                f"  Position: visible in current view (lines {vis_start}-{vis_end})"
-            )
+            lines.append(f"  Position: visible in current view (lines {vis_start}-{vis_end})")
 
         lines.append("  Commands:")
         for cmd in d.commands:
-            lines.append(f"    Type \"{cmd}\"")
+            lines.append(f'    Type "{cmd}"')
 
         if d.notes:
             for note in d.notes:
@@ -196,11 +196,7 @@ def format_directions_text(directions: list[StageDirection], rows: int) -> str:
 
 def format_directions_json(directions: list[StageDirection], rows: int) -> str:
     """Format stage directions as JSON."""
-    data = {
-        "terminal_rows": rows,
-        "visible_rows": rows - 2,
-        "blocks": []
-    }
+    data = {"terminal_rows": rows, "visible_rows": rows - 2, "blocks": []}
 
     for d in directions:
         block_data = {
@@ -247,13 +243,15 @@ def format_directions_demorec(directions: list[StageDirection]) -> str:
 # Checkpoint Detection
 # =============================================================================
 
+
 @dataclass
 class Checkpoint:
     """An automatically detected checkpoint in a script."""
-    line_number: int          # Line in script file
-    command_index: int        # Index in command list
-    event_type: str           # Type of event that triggered checkpoint
-    description: str          # Human-readable description
+
+    line_number: int  # Line in script file
+    command_index: int  # Index in command list
+    event_type: str  # Type of event that triggered checkpoint
+    description: str  # Human-readable description
     expected_highlight: tuple[int, int] | None = None  # Expected line range if visual selection
 
 
@@ -288,13 +286,15 @@ def detect_checkpoints(script_path: Path) -> list[Checkpoint]:
             if "@narrate:after" in line_stripped:
                 # Narration point - the previous visual selection should be visible
                 expected = (visual_start_line, pending_goto) if visual_start_line else None
-                checkpoints.append(Checkpoint(
-                    line_number=line_num,
-                    command_index=command_index,
-                    event_type="narration",
-                    description="Narration point - content should be visible",
-                    expected_highlight=expected
-                ))
+                checkpoints.append(
+                    Checkpoint(
+                        line_number=line_num,
+                        command_index=command_index,
+                        event_type="narration",
+                        description="Narration point - content should be visible",
+                        expected_highlight=expected,
+                    )
+                )
             continue
 
         is_directive = line_stripped.startswith("@")
@@ -309,7 +309,7 @@ def detect_checkpoints(script_path: Path) -> list[Checkpoint]:
             last_type_line = line_num
 
             # Detect goto line commands (e.g., "6G", "27G")
-            goto_match = re.match(r'(\d+)G', typed_content)
+            goto_match = re.match(r"(\d+)G", typed_content)
             if goto_match:
                 pending_goto = int(goto_match.group(1))
 
@@ -331,13 +331,15 @@ def detect_checkpoints(script_path: Path) -> list[Checkpoint]:
                 # End of visual selection - this is a checkpoint
                 start = min(visual_start_line, pending_goto)
                 end = max(visual_start_line, pending_goto)
-                checkpoints.append(Checkpoint(
-                    line_number=last_type_line,  # Use line of last Type command
-                    command_index=command_index - 1,
-                    event_type="visual_selection",
-                    description=f"Visual selection complete: lines {start}-{end}",
-                    expected_highlight=(start, end)
-                ))
+                checkpoints.append(
+                    Checkpoint(
+                        line_number=last_type_line,  # Use line of last Type command
+                        command_index=command_index - 1,
+                        event_type="visual_selection",
+                        description=f"Visual selection complete: lines {start}-{end}",
+                        expected_highlight=(start, end),
+                    )
+                )
 
             in_visual_mode = False
             visual_start_line = None
@@ -381,9 +383,11 @@ def format_checkpoints_json(checkpoints: list[Checkpoint]) -> str:
                 "command_index": cp.command_index,
                 "event_type": cp.event_type,
                 "description": cp.description,
-                "expected_highlight": list(cp.expected_highlight) if cp.expected_highlight else None
+                "expected_highlight": list(cp.expected_highlight)
+                if cp.expected_highlight
+                else None,
             }
             for cp in checkpoints
-        ]
+        ],
     }
     return json.dumps(data, indent=2)

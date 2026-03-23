@@ -27,6 +27,7 @@ from dataclasses import dataclass
 @dataclass
 class VimState:
     """Tracks vim session state."""
+
     file_path: str | None = None
     current_line: int = 1
     terminal_rows: int = 24
@@ -49,15 +50,9 @@ def install_vim() -> bool:
 
     # Try to install vim (Debian/Ubuntu)
     try:
-        subprocess.run(
-            ["sudo", "apt-get", "update", "-qq"],
-            capture_output=True,
-            timeout=60
-        )
+        subprocess.run(["sudo", "apt-get", "update", "-qq"], capture_output=True, timeout=60)
         result = subprocess.run(
-            ["sudo", "apt-get", "install", "-y", "-qq", "vim"],
-            capture_output=True,
-            timeout=120
+            ["sudo", "apt-get", "install", "-y", "-qq", "vim"], capture_output=True, timeout=120
         )
         return result.returncode == 0 and check_vim_installed()
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -113,9 +108,7 @@ def generate_open_commands(file_path: str, state: VimState) -> list[tuple[str, f
 
 
 def generate_highlight_commands(
-    line_range: str,
-    state: VimState,
-    centering: str = "auto"
+    line_range: str, state: VimState, centering: str = "auto"
 ) -> list[tuple[str, float]]:
     """Generate vim commands to highlight a range of lines.
 

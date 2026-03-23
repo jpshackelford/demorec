@@ -5,31 +5,15 @@ enabling full ANSI support, interactive commands, spinners, etc.
 """
 
 import asyncio
-import os
-import socket
 import subprocess
 import time
 from pathlib import Path
 
 from ..parser import Command, Segment
+from ..ttyd import check_ttyd, find_free_port, stop_ttyd
+from ..xterm import TerminalConfig, fit_to_rows, setup_terminal
 from .terminal_commands import TERMINAL_COMMANDS, THEMES
 from .vim import VimCommandExpander
-
-
-def _find_free_port() -> int:
-    """Find an available port."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
-
-
-def _check_ttyd() -> bool:
-    """Check if ttyd is available."""
-    try:
-        result = subprocess.run(["ttyd", "--version"], capture_output=True)
-        return result.returncode == 0
-    except FileNotFoundError:
-        return False
 
 
 class TerminalRecorder:
@@ -93,12 +77,10 @@ class TerminalRecorder:
         output = output.absolute()
         self._timed_narrations = timed_narrations or {}
 
-        if not _check_ttyd():
-            raise RuntimeError(
-                "ttyd not found. Install with:\n"
-                "  wget -qO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64\n"
-                "  chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/ttyd"
-            )
+        if not check_ttyd():
+            from ..ttyd import find_ttyd
+
+            find_ttyd()  # Raises with install instructions
 
         return asyncio.run(self._record_async(segment, output))
 
@@ -112,40 +94,13 @@ class TerminalRecorder:
 
     def _start_ttyd(self, port: int):
         """Start ttyd process on the given port."""
-        env = os.environ.copy()
-        env["TERM"] = "xterm-256color"
-        env["PS1"] = "$ "
-        env["PROMPT_COMMAND"] = ""  # Clear PROMPT_COMMAND that sets PS1JSON
+        from ..ttyd import start_ttyd
 
-        # Remove any other prompt-related variables that might interfere
-        for key in list(env.keys()):
-            if "PROMPT" in key and key != "PROMPT_COMMAND":
-                del env[key]
-
-        self._ttyd_process = subprocess.Popen(
-            [
-                "ttyd",
-                "--port",
-                str(port),
-                "--writable",
-                "--once",
-                "/bin/bash",
-                "--norc",
-                "--noprofile",
-            ],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        self._ttyd_process = start_ttyd(port)
 
     def _cleanup_ttyd(self):
         """Terminate the ttyd process."""
-        if self._ttyd_process:
-            self._ttyd_process.terminate()
-            try:
-                self._ttyd_process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                self._ttyd_process.kill()
+        stop_ttyd(self._ttyd_process)
 
     async def _run_browser_session(
         self, segment: Segment, output: Path, port: int
@@ -213,98 +168,25 @@ class TerminalRecorder:
         return timestamps, setup_duration
 
     async def _setup_terminal(self, page) -> dict | None:
-        """Set up terminal sizing using VHS-style approach."""
-        term_size = await page.evaluate(
-            """(config) => {
-            if (!window.term) return null;
-
-            // Make container fill viewport
-            const container = document.querySelector('#terminal-container') ||
-                              document.querySelector('.xterm');
-            if (container) {
-                container.style.width = '100vw';
-                container.style.height = '100vh';
-                container.style.position = 'fixed';
-                container.style.top = '0';
-                container.style.left = '0';
-                container.style.padding = '0';
-                container.style.margin = '0';
-            }
-
-            const term = window.term;
-            term.options.fontFamily = config.fontFamily;
-            term.options.lineHeight = config.lineHeight;
-            term.options.cursorBlink = false;
-
-            if (config.theme) {
-                term.options.theme = config.theme;
-            }
-
-            term.fit();
-            let baselineRows = term.rows;
-            let finalFontSize = config.fontSize;
-
-            if (config.desiredRows && config.desiredRows !== baselineRows) {
-                finalFontSize = Math.round(config.fontSize * (baselineRows / config.desiredRows));
-                term.options.fontSize = finalFontSize;
-                term.fit();
-            } else {
-                term.options.fontSize = finalFontSize;
-                term.fit();
-            }
-
-            return {
-                rows: term.rows,
-                cols: term.cols,
-                fontSize: term.options.fontSize,
-                baselineRows: baselineRows
-            };
-        }""",
-            {
-                "fontSize": self.font_size,
-                "fontFamily": self.font_family,
-                "lineHeight": self.line_height,
-                "theme": THEMES.get(self.theme),
-                "desiredRows": self.desired_rows,
-            },
+        """Set up terminal sizing using xterm module."""
+        config = TerminalConfig(
+            font_size=self.font_size,
+            font_family=self.font_family,
+            line_height=self.line_height,
+            theme=THEMES.get(self.theme),
+            desired_rows=self.desired_rows,
         )
+
+        term_size = await setup_terminal(page, config)
         await asyncio.sleep(0.3)
 
         # Iterative refinement if needed
-        if self.desired_rows and term_size and term_size["rows"] != self.desired_rows:
-            for _ in range(3):
-                term_size = await page.evaluate(
-                    """(desiredRows) => {
-                    if (!window.term) return null;
-                    const term = window.term;
-                    const currentRows = term.rows;
-                    const currentFontSize = term.options.fontSize || 14;
+        if self.desired_rows and term_size and term_size.rows != self.desired_rows:
+            term_size = await fit_to_rows(page, self.desired_rows, max_iterations=3)
 
-                    if (currentRows === desiredRows) {
-                        return {
-                            rows: currentRows, cols: term.cols,
-                            fontSize: currentFontSize, done: true
-                        };
-                    }
-
-                    const newFontSize = Math.round(currentFontSize * (currentRows / desiredRows));
-                    term.options.fontSize = newFontSize;
-                    term.fit();
-
-                    return {
-                        rows: term.rows,
-                        cols: term.cols,
-                        fontSize: newFontSize,
-                        done: term.rows === desiredRows
-                    };
-                }""",
-                    self.desired_rows,
-                )
-                await asyncio.sleep(0.2)
-                if term_size and term_size.get("done"):
-                    break
-
-        return term_size
+        if term_size:
+            return {"rows": term_size.rows, "cols": term_size.cols, "fontSize": term_size.font_size}
+        return None
 
     def _finalize_video(self, output: Path, trim_start: float = 0):
         """Find and convert the recorded video."""
@@ -341,7 +223,7 @@ class TerminalRecorder:
     async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
         """Record terminal session using ttyd and Playwright."""
         self._apply_theme_from_segment(segment)
-        port = _find_free_port()
+        port = find_free_port()
         self._start_ttyd(port)
         await asyncio.sleep(0.5)
 

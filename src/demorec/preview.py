@@ -5,14 +5,13 @@ that expected content is visible on screen.
 """
 
 import asyncio
-import os
 import re
-import shutil
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from .stage import Checkpoint
+from .ttyd import find_ttyd, start_ttyd, stop_ttyd
+from .xterm import fit_to_rows, get_buffer_state, setup_container
 
 
 @dataclass
@@ -38,64 +37,6 @@ class PreviewResult:
     screenshot_dir: Path | None
 
 
-def _find_ttyd() -> str:
-    """Find ttyd executable."""
-    local_bin = str(Path.home() / ".local/bin")
-    search_path = f"{local_bin}:{os.environ.get('PATH', '')}"
-
-    ttyd_path = shutil.which("ttyd", path=search_path)
-    if ttyd_path:
-        return ttyd_path
-
-    for path in ["/usr/local/bin/ttyd", f"{local_bin}/ttyd"]:
-        if Path(path).exists():
-            return path
-
-    raise RuntimeError("ttyd not found. Install with: brew install ttyd")
-
-
-def _make_clean_env() -> dict[str, str]:
-    """Create clean environment for ttyd subprocess."""
-    env = os.environ.copy()
-    env["TERM"] = "xterm-256color"
-    env["PS1"] = "$ "
-    env["PROMPT_COMMAND"] = ""
-
-    local_bin = str(Path.home() / ".local/bin")
-    current_path = env.get("PATH", "")
-    if local_bin not in current_path:
-        env["PATH"] = f"{local_bin}:{current_path}"
-
-    for key in list(env.keys()):
-        if "PROMPT" in key and key != "PROMPT_COMMAND":
-            del env[key]
-
-    return env
-
-
-def _start_ttyd(ttyd_path: str, port: int, env: dict) -> subprocess.Popen:
-    """Start ttyd subprocess."""
-    ttyd_cmd = [
-        ttyd_path, "-p", str(port), "--writable", "--once",
-        "/bin/bash", "--norc", "--noprofile",
-    ]
-    return subprocess.Popen(
-        ttyd_cmd, env=env,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-
-
-def _stop_ttyd(process: subprocess.Popen | None) -> None:
-    """Stop ttyd subprocess."""
-    if not process:
-        return
-    process.terminate()
-    try:
-        process.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        process.kill()
-
-
 class TerminalPreviewer:
     """Previews a terminal recording, verifying checkpoints."""
 
@@ -112,9 +53,7 @@ class TerminalPreviewer:
         self.screenshots = screenshots
         self._ttyd_process = None
 
-    def preview(
-        self, script_path: Path, segment, output_dir: Path | None = None
-    ) -> PreviewResult:
+    def preview(self, script_path: Path, segment, output_dir: Path | None = None) -> PreviewResult:
         """Run preview and return results."""
         return asyncio.run(self._preview_async(script_path, segment, output_dir))
 
@@ -124,17 +63,16 @@ class TerminalPreviewer:
         checkpoints = self._detect_checkpoints_from_commands(segment.commands)
         screenshot_dir = self._setup_screenshot_dir(output_dir)
 
-        ttyd_path = _find_ttyd()
-        env = _make_clean_env()
+        find_ttyd()  # Validate ttyd exists (raises if not)
         port = 7682
 
-        self._ttyd_process = _start_ttyd(ttyd_path, port, env)
+        self._ttyd_process = start_ttyd(port)
         await asyncio.sleep(0.5)
 
         try:
             results = await self._run_browser_session(port, segment, checkpoints, screenshot_dir)
         finally:
-            _stop_ttyd(self._ttyd_process)
+            stop_ttyd(self._ttyd_process)
 
         return self._build_result(results, screenshot_dir)
 
@@ -258,64 +196,9 @@ class TerminalPreviewer:
         return checkpoints
 
     async def _setup_terminal(self, page):
-        """Set up terminal with proper sizing."""
-        # Calculate desired rows and set up terminal
-        await page.evaluate(
-            """(config) => {
-            if (!window.term) return null;
-
-            const container = document.querySelector('.xterm');
-            if (container) {
-                container.style.width = '100vw';
-                container.style.height = '100vh';
-                container.style.position = 'fixed';
-                container.style.top = '0';
-                container.style.left = '0';
-            }
-
-            if (config.fontSize) {
-                term.options.fontSize = config.fontSize;
-            }
-            if (config.fontFamily) {
-                term.options.fontFamily = config.fontFamily;
-            }
-
-            term.fit();
-
-            return { rows: term.rows, cols: term.cols };
-        }""",
-            {"fontSize": 14, "fontFamily": "Monaco, 'Courier New', monospace"},
-        )
-
-        # Iteratively adjust font size to get desired rows
-        for _ in range(10):
-            term_size = await page.evaluate(
-                """(desiredRows) => {
-                if (!window.term) return null;
-
-                const currentRows = term.rows;
-                if (currentRows === desiredRows) {
-                    return { rows: currentRows, done: true };
-                }
-
-                const ratio = currentRows / desiredRows;
-                const currentFontSize = term.options.fontSize || 14;
-                const newFontSize = Math.max(8, Math.min(32, Math.round(currentFontSize * ratio)));
-
-                if (newFontSize !== currentFontSize) {
-                    term.options.fontSize = newFontSize;
-                    term.fit();
-                }
-
-                return { rows: term.rows, fontSize: newFontSize, done: term.rows === desiredRows };
-            }""",
-                self.rows,
-            )
-
-            await asyncio.sleep(0.1)
-
-            if term_size and term_size.get("done"):
-                break
+        """Set up terminal with proper sizing using xterm module."""
+        await setup_container(page)
+        await fit_to_rows(page, self.rows, max_iterations=10, delay=0.1)
 
         # Clear terminal
         await page.keyboard.press("Control+l")
@@ -355,73 +238,59 @@ class TerminalPreviewer:
         self, page, checkpoint: Checkpoint, screenshot_dir: Path | None, checkpoint_num: int
     ) -> CheckpointResult:
         """Verify a checkpoint and return result."""
+        buffer_state = await get_buffer_state(page)
+        visible_lines = buffer_state.visible_lines if buffer_state else []
+        visible_line_range = self._extract_line_range(visible_lines)
 
-        # Query the terminal buffer for visible content
-        buffer_state = await page.evaluate("""() => {
-            if (!window.term) return null;
-
-            const term = window.term;
-            const buffer = term.buffer.active;
-
-            const visibleLines = [];
-            for (let i = 0; i < term.rows; i++) {
-                const line = buffer.getLine(buffer.viewportY + i);
-                if (line) {
-                    visibleLines.push(line.translateToString().trimEnd());
-                }
-            }
-
-            return {
-                rows: term.rows,
-                cols: term.cols,
-                viewportY: buffer.viewportY,
-                visibleLines: visibleLines
-            };
-        }""")
-
-        # Parse line numbers from visible content
-        visible_line_range = self._extract_line_range(buffer_state.get("visibleLines", []))
-
-        # Check if expected lines are visible
-        expected = checkpoint.expected_highlight
-        passed = True
-        error_message = None
-
-        if expected and visible_line_range:
-            expected_start, expected_end = expected
-            visible_start, visible_end = visible_line_range
-
-            # Check if all expected lines are within visible range
-            if expected_start < visible_start or expected_end > visible_end:
-                passed = False
-                if expected_start < visible_start:
-                    error_message = (
-                        f"Line {expected_start} not visible (viewport starts at {visible_start})"
-                    )
-                else:
-                    error_message = (
-                        f"Line {expected_end} not visible (viewport ends at {visible_end})"
-                    )
-
-        # Capture screenshot if needed
-        screenshot_path = None
-        should_screenshot = self.screenshots == "always" or (
-            self.screenshots == "on_error" and not passed
+        passed, error_message = self._check_visibility(
+            checkpoint.expected_highlight, visible_line_range
         )
 
-        if should_screenshot and screenshot_dir:
-            filename = f"checkpoint_{checkpoint_num}_{checkpoint.event_type}.png"
-            screenshot_path = screenshot_dir / filename
-            await page.screenshot(path=str(screenshot_path))
+        screenshot_path = await self._maybe_screenshot(
+            page, screenshot_dir, checkpoint_num, checkpoint.event_type, passed
+        )
 
         return CheckpointResult(
             checkpoint=checkpoint,
             passed=passed,
-            expected_lines=expected,
+            expected_lines=checkpoint.expected_highlight,
             visible_lines=visible_line_range,
             screenshot_path=screenshot_path,
             error_message=error_message,
         )
+
+    def _check_visibility(
+        self, expected: tuple[int, int] | None, visible: tuple[int, int] | None
+    ) -> tuple[bool, str | None]:
+        """Check if expected lines are visible."""
+        if not expected or not visible:
+            return True, None
+
+        expected_start, expected_end = expected
+        visible_start, visible_end = visible
+
+        if expected_start < visible_start:
+            return False, f"Line {expected_start} not visible (viewport starts at {visible_start})"
+        if expected_end > visible_end:
+            return False, f"Line {expected_end} not visible (viewport ends at {visible_end})"
+
+        return True, None
+
+    async def _maybe_screenshot(
+        self, page, screenshot_dir: Path | None, checkpoint_num: int, event_type: str, passed: bool
+    ) -> Path | None:
+        """Capture screenshot if needed."""
+        should_screenshot = self.screenshots == "always" or (
+            self.screenshots == "on_error" and not passed
+        )
+
+        if not should_screenshot or not screenshot_dir:
+            return None
+
+        filename = f"checkpoint_{checkpoint_num}_{event_type}.png"
+        screenshot_path = screenshot_dir / filename
+        await page.screenshot(path=str(screenshot_path))
+        return screenshot_path
 
     def _extract_line_range(self, visible_lines: list[str]) -> tuple[int, int] | None:
         """Extract the range of line numbers visible on screen.

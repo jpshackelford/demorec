@@ -26,8 +26,13 @@ def write_concat_file(file_path: Path, files: list[Path]):
 def get_duration(media_path: Path) -> float:
     """Get duration of a media file in seconds."""
     cmd = [
-        "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-show_format", str(media_path),
+        "ffprobe",
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_format",
+        str(media_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode == 0:
@@ -42,8 +47,17 @@ def concat_audio_files(audio_files: list[Path], output: Path, temp_dir: Path) ->
     write_concat_file(concat_file, audio_files)
 
     cmd = [
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-        "-i", str(concat_file), "-c", "copy", str(output),
+        "ffmpeg",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_file),
+        "-c",
+        "copy",
+        str(output),
     ]
     run_ffmpeg(cmd, "Audio concat failed")
     return output
@@ -52,9 +66,18 @@ def concat_audio_files(audio_files: list[Path], output: Path, temp_dir: Path) ->
 def overlay_audio(video: Path, audio: Path, output: Path):
     """Overlay audio track onto video."""
     cmd = [
-        "ffmpeg", "-y",
-        "-i", str(video), "-i", str(audio),
-        "-c:v", "copy", "-c:a", "aac", "-shortest", str(output),
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video),
+        "-i",
+        str(audio),
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-shortest",
+        str(output),
     ]
     run_ffmpeg(cmd, "Audio overlay failed")
 
@@ -79,11 +102,22 @@ def mix_audio_timed(video_path: Path, narrations: list, output: Path):
         inputs.extend(["-i", str(n.audio_path)])
 
     cmd = [
-        "ffmpeg", "-y", *inputs,
-        "-filter_complex", filter_complex,
-        "-map", "0:v", "-map", "[aout]",
-        "-c:v", "copy", "-c:a", "aac",
-        "-t", str(video_duration), str(output),
+        "ffmpeg",
+        "-y",
+        *inputs,
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "0:v",
+        "-map",
+        "[aout]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-t",
+        str(video_duration),
+        str(output),
     ]
     run_ffmpeg(cmd, "Audio mixing failed")
 

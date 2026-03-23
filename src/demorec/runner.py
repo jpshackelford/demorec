@@ -213,8 +213,17 @@ class Runner:
         concat_file = self.temp_dir / "concat.txt"
         write_concat_file(concat_file, self.segment_files)
         cmd = [
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", str(concat_file), "-c", "copy", str(output),
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_file),
+            "-c",
+            "copy",
+            str(output),
         ]
         run_ffmpeg(cmd, "FFmpeg concat failed")
 

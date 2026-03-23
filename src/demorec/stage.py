@@ -86,81 +86,71 @@ def calculate_visible_range(
 def calculate_stage_directions(
     rows: int,
     highlights: list[Block],
-    overhead: int = 2,  # Lines used by prompt/status bar
+    overhead: int = 2,
 ) -> list[StageDirection]:
-    """Calculate stage directions for highlighting blocks.
-
-    Args:
-        rows: Terminal rows
-        highlights: List of Block objects to highlight
-        overhead: Lines used by vim status bar, etc.
-
-    Returns:
-        List of StageDirection objects
-    """
+    """Calculate stage directions for highlighting blocks."""
     visible_rows = rows - overhead
     directions = []
-
-    # Track current view position (start with initial view)
-    current_view_start = 1
-    current_view_end = visible_rows
+    current_view = (1, visible_rows)
 
     for block in highlights:
-        notes = []
-
-        # Check if block is fully visible in current view
-        block_visible = block.start >= current_view_start and block.end <= current_view_end
-
-        if block_visible:
-            # No scroll needed
-            directions.append(
-                StageDirection(
-                    block=block,
-                    needs_scroll=False,
-                    scroll_to=None,
-                    scroll_method=None,
-                    visible_range=(current_view_start, current_view_end),
-                    commands=[f"{block.start}GV{block.end}G"],
-                    notes=["Visible in current view"],
-                )
-            )
-        else:
-            # Need to scroll - center on middle of block
-            scroll_to = block.middle
-            scroll_method = "zz"
-
-            # Calculate new visible range
-            new_view = calculate_visible_range(scroll_to, visible_rows, scroll_method)
-
-            # Check if block fits after scroll
-            block_fits = block.start >= new_view[0] and block.end <= new_view[1]
-
-            if not block_fits:
-                # Block is larger than visible area, use top alignment
-                scroll_to = block.start
-                scroll_method = "zt"
-                new_view = calculate_visible_range(scroll_to, visible_rows, scroll_method)
-                notes.append("Block larger than view, showing from top")
-
-            # Build commands
-            commands = [f"{scroll_to}G{scroll_method}", f"{block.start}GV{block.end}G"]
-
-            directions.append(
-                StageDirection(
-                    block=block,
-                    needs_scroll=True,
-                    scroll_to=scroll_to,
-                    scroll_method=scroll_method,
-                    visible_range=new_view,
-                    commands=commands,
-                    notes=notes if notes else ["Scroll to center block"],
-                )
-            )
-
-            # Update current view
-            current_view_start, current_view_end = new_view
+        direction, current_view = _direction_for_block(block, current_view, visible_rows)
+        directions.append(direction)
 
     return directions
+
+
+def _direction_for_block(
+    block: Block, current_view: tuple[int, int], visible_rows: int
+) -> tuple[StageDirection, tuple[int, int]]:
+    """Calculate direction for a single block."""
+    view_start, view_end = current_view
+    block_visible = block.start >= view_start and block.end <= view_end
+
+    if block_visible:
+        return _no_scroll_direction(block, current_view), current_view
+
+    return _scroll_direction(block, visible_rows)
+
+
+def _no_scroll_direction(block: Block, visible_range: tuple[int, int]) -> StageDirection:
+    """Create direction when block is already visible."""
+    return StageDirection(
+        block=block,
+        needs_scroll=False,
+        scroll_to=None,
+        scroll_method=None,
+        visible_range=visible_range,
+        commands=[f"{block.start}GV{block.end}G"],
+        notes=["Visible in current view"],
+    )
+
+
+def _scroll_direction(block: Block, visible_rows: int) -> tuple[StageDirection, tuple[int, int]]:
+    """Create direction when scrolling is needed."""
+    scroll_to = block.middle
+    scroll_method = "zz"
+    new_view = calculate_visible_range(scroll_to, visible_rows, scroll_method)
+
+    # Check if block fits after scroll
+    if not (block.start >= new_view[0] and block.end <= new_view[1]):
+        scroll_to = block.start
+        scroll_method = "zt"
+        new_view = calculate_visible_range(scroll_to, visible_rows, scroll_method)
+        notes = ["Block larger than view, showing from top"]
+    else:
+        notes = ["Scroll to center block"]
+
+    direction = StageDirection(
+        block=block,
+        needs_scroll=True,
+        scroll_to=scroll_to,
+        scroll_method=scroll_method,
+        visible_range=new_view,
+        commands=[f"{scroll_to}G{scroll_method}", f"{block.start}GV{block.end}G"],
+        notes=notes,
+    )
+    return direction, new_view
 
 
 def format_directions_text(directions: list[StageDirection], rows: int) -> str:

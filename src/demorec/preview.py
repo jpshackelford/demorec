@@ -141,59 +141,51 @@ class TerminalPreviewer:
         return page
 
     def _detect_checkpoints_from_commands(self, commands) -> list[Checkpoint]:
-        """Detect checkpoints from parsed commands.
-
-        Looks for visual selection patterns:
-        - Type "NG" (goto line)
-        - Type "V" (visual mode)
-        - Type "NG" (extend selection)
-        - ... eventually Escape
-
-        Checkpoint fires right before Escape.
-        """
+        """Detect checkpoints from visual selection patterns in commands."""
         checkpoints = []
-
-        in_visual_mode = False
-        visual_start_line: int | None = None
-        pending_goto: int | None = None
-        last_goto_idx: int = 0
+        state = {"in_visual": False, "visual_start": None, "goto": None, "goto_idx": 0}
 
         for i, cmd in enumerate(commands):
             if cmd.name == "Type" and cmd.args:
-                typed = cmd.args[0]
-
-                # Detect goto (e.g., "6G", "27G")
-                goto_match = re.match(r"^(\d+)G", typed)
-                if goto_match:
-                    pending_goto = int(goto_match.group(1))
-                    last_goto_idx = i
-
-                # Detect visual mode
-                if typed in ("V", "v"):
-                    in_visual_mode = True
-                    visual_start_line = pending_goto
-
+                self._process_type_cmd(cmd.args[0], i, state)
             elif cmd.name == "Escape":
-                if in_visual_mode and visual_start_line and pending_goto:
-                    start = min(visual_start_line, pending_goto)
-                    end = max(visual_start_line, pending_goto)
-
-                    # Checkpoint is at the last goto before Escape (selection end)
-                    # We use command index as line_number for simplicity
-                    checkpoints.append(
-                        Checkpoint(
-                            line_number=last_goto_idx,
-                            command_index=last_goto_idx,
-                            event_type="visual_selection",
-                            description=f"Visual selection: lines {start}-{end}",
-                            expected_highlight=(start, end),
-                        )
-                    )
-
-                in_visual_mode = False
-                visual_start_line = None
+                checkpoint = self._process_escape(state)
+                if checkpoint:
+                    checkpoints.append(checkpoint)
 
         return checkpoints
+
+    def _process_type_cmd(self, typed: str, idx: int, state: dict):
+        """Process a Type command for goto/visual patterns."""
+        goto_match = re.match(r"^(\d+)G", typed)
+        if goto_match:
+            state["goto"] = int(goto_match.group(1))
+            state["goto_idx"] = idx
+
+        if typed in ("V", "v"):
+            state["in_visual"] = True
+            state["visual_start"] = state["goto"]
+
+    def _process_escape(self, state: dict) -> Checkpoint | None:
+        """Process Escape command and create checkpoint if in visual mode."""
+        if not (state["in_visual"] and state["visual_start"] and state["goto"]):
+            state["in_visual"] = False
+            state["visual_start"] = None
+            return None
+
+        start = min(state["visual_start"], state["goto"])
+        end = max(state["visual_start"], state["goto"])
+        checkpoint = Checkpoint(
+            line_number=state["goto_idx"],
+            command_index=state["goto_idx"],
+            event_type="visual_selection",
+            description=f"Visual selection: lines {start}-{end}",
+            expected_highlight=(start, end),
+        )
+
+        state["in_visual"] = False
+        state["visual_start"] = None
+        return checkpoint
 
     async def _setup_terminal(self, page):
         """Set up terminal with proper sizing using xterm module."""

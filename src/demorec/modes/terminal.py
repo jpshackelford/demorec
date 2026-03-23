@@ -105,67 +105,73 @@ class TerminalRecorder:
     async def _run_browser_session(
         self, segment: Segment, output: Path, port: int
     ) -> tuple[dict[int, tuple[float, float]], float]:
-        """Run the Playwright browser session to record commands.
-
-        Returns:
-            Tuple of (timestamps dict, setup_duration in seconds)
-        """
+        """Run the Playwright browser session to record commands."""
         from playwright.async_api import async_playwright
 
-        timestamps: dict[int, tuple[float, float]] = {}
-        video_start_time = None
-        setup_duration = 0.0
-
         async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            context = await browser.new_context(
-                viewport={"width": self.width, "height": self.height},
-                device_scale_factor=1,  # Use 1:1 scale for accurate terminal sizing
-                record_video_dir=str(output.parent),
-                record_video_size={"width": self.width, "height": self.height},
-            )
-            page = await context.new_page()
-
+            context, page = await self._create_browser_context(p, output)
             video_start_time = time.time()
-            await page.goto(f"http://localhost:{port}", wait_until="networkidle")
-            await page.wait_for_selector(".xterm-screen", timeout=10000)
-            await page.wait_for_function("() => window.term !== undefined", timeout=10000)
-            await asyncio.sleep(0.3)
 
-            # VHS-style terminal setup with sizing
+            await self._wait_for_terminal(page, port)
             term_size = await self._setup_terminal(page)
-
-            # Update vim expander with actual terminal rows
-            if term_size and term_size.get("rows"):
-                self._vim_expander.set_terminal_rows(term_size["rows"])
-
-            # Clear terminal for clean start
-            await page.keyboard.press("Control+l")
-            await asyncio.sleep(0.5)
+            self._configure_vim_rows(term_size)
+            await self._clear_terminal(page)
 
             setup_duration = time.time() - video_start_time
-            recording_start = time.time()
-
-            # Execute commands with timestamp tracking
-            for cmd_idx, cmd in enumerate(segment.commands):
-                narration = self._timed_narrations.get(cmd_idx)
-
-                if narration and narration.mode == "before":
-                    await asyncio.sleep(narration.duration)
-
-                cmd_start = time.time() - recording_start
-                await self._execute_command(page, cmd)
-                cmd_end = time.time() - recording_start
-                timestamps[cmd_idx] = (cmd_start, cmd_end)
-
-                if narration and narration.mode == "after":
-                    await asyncio.sleep(narration.duration)
+            timestamps = await self._execute_commands(page, segment)
 
             await asyncio.sleep(0.5)
             await context.close()
-            await browser.close()
 
         return timestamps, setup_duration
+
+    async def _create_browser_context(self, playwright, output: Path):
+        """Create browser context with video recording."""
+        browser = await playwright.chromium.launch()
+        context = await browser.new_context(
+            viewport={"width": self.width, "height": self.height},
+            device_scale_factor=1,
+            record_video_dir=str(output.parent),
+            record_video_size={"width": self.width, "height": self.height},
+        )
+        page = await context.new_page()
+        return context, page
+
+    async def _wait_for_terminal(self, page, port: int):
+        """Navigate to ttyd and wait for xterm to be ready."""
+        await page.goto(f"http://localhost:{port}", wait_until="networkidle")
+        await page.wait_for_selector(".xterm-screen", timeout=10000)
+        await page.wait_for_function("() => window.term !== undefined", timeout=10000)
+        await asyncio.sleep(0.3)
+
+    def _configure_vim_rows(self, term_size: dict | None):
+        """Update vim expander with actual terminal rows."""
+        if term_size and term_size.get("rows"):
+            self._vim_expander.set_terminal_rows(term_size["rows"])
+
+    async def _clear_terminal(self, page):
+        """Clear terminal for clean recording start."""
+        await page.keyboard.press("Control+l")
+        await asyncio.sleep(0.5)
+
+    async def _execute_commands(self, page, segment: Segment) -> dict[int, tuple[float, float]]:
+        """Execute commands with timestamp tracking."""
+        timestamps: dict[int, tuple[float, float]] = {}
+        recording_start = time.time()
+
+        for cmd_idx, cmd in enumerate(segment.commands):
+            narration = self._timed_narrations.get(cmd_idx)
+            if narration and narration.mode == "before":
+                await asyncio.sleep(narration.duration)
+
+            cmd_start = time.time() - recording_start
+            await self._execute_command(page, cmd)
+            timestamps[cmd_idx] = (cmd_start, time.time() - recording_start)
+
+            if narration and narration.mode == "after":
+                await asyncio.sleep(narration.duration)
+
+        return timestamps
 
     async def _setup_terminal(self, page) -> dict | None:
         """Set up terminal sizing using xterm module."""

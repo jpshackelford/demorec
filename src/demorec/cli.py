@@ -260,12 +260,22 @@ def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path 
 
         demorec preview script.demorec --no-screenshots
     """
-    from rich.progress import Progress, SpinnerColumn, TextColumn
-
     console.print("[bold blue]demorec[/] preview")
     console.print(f"[dim]Script:[/] {script}")
     console.print(f"[dim]Terminal:[/] {rows} rows")
 
+    segment = _get_terminal_segment(script)
+    screenshot_mode = _get_screenshot_mode(screenshots)
+
+    console.print(f"[dim]Screenshots:[/] {screenshot_mode}")
+    console.print()
+
+    result = _run_preview(script, segment, rows, screenshot_mode, output_dir)
+    _print_preview_results(result)
+
+
+def _get_terminal_segment(script: Path):
+    """Parse script and return first terminal segment."""
     try:
         plan = parse_script(script)
     except Exception as e:
@@ -277,17 +287,21 @@ def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path 
         console.print("[bold red]Error:[/] No terminal segments with commands found in script")
         raise SystemExit(1)
 
-    segment = terminal_segments[0]
+    return terminal_segments[0]
 
+
+def _get_screenshot_mode(screenshots: bool | None) -> str:
+    """Convert screenshots flag to mode string."""
     if screenshots is True:
-        screenshot_mode = "always"
+        return "always"
     elif screenshots is False:
-        screenshot_mode = "never"
-    else:
-        screenshot_mode = "on_error"
+        return "never"
+    return "on_error"
 
-    console.print(f"[dim]Screenshots:[/] {screenshot_mode}")
-    console.print()
+
+def _run_preview(script, segment, rows, screenshot_mode, output_dir):
+    """Run preview with progress spinner."""
+    from rich.progress import Progress, SpinnerColumn, TextColumn
 
     previewer = TerminalPreviewer(rows=rows, screenshots=screenshot_mode)
 
@@ -297,29 +311,19 @@ def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path 
         console=console,
     ) as progress:
         progress.add_task("Running preview...", total=None)
-
         try:
-            result = previewer.preview(script, segment, output_dir)
+            return previewer.preview(script, segment, output_dir)
         except Exception as e:
             console.print(f"[bold red]Preview error:[/] {e}")
             raise SystemExit(1)
 
+
+def _print_preview_results(result):
+    """Print preview results and exit if failures."""
     console.print()
 
     for i, r in enumerate(result.results, 1):
-        status = "[bold green]✓[/]" if r.passed else "[bold red]✗[/]"
-        console.print(f"{status} Checkpoint {i} (line {r.checkpoint.line_number}): ", end="")
-        console.print("[green]PASS[/]" if r.passed else "[red]FAIL[/]")
-
-        if r.expected_lines:
-            console.print(f"    Expected: lines {r.expected_lines[0]}-{r.expected_lines[1]}")
-        if r.visible_lines:
-            console.print(f"    Visible:  lines {r.visible_lines[0]}-{r.visible_lines[1]}")
-        if r.error_message:
-            console.print(f"    [red]Error: {r.error_message}[/]")
-        if r.screenshot_path:
-            console.print(f"    Screenshot: {r.screenshot_path}")
-        console.print()
+        _print_checkpoint_result(i, r)
 
     if result.failed > 0:
         msg = f"[bold red]Summary: {result.passed}/{result.total} passed, {result.failed} failed[/]"
@@ -329,6 +333,23 @@ def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path 
         raise SystemExit(1)
     else:
         console.print(f"[bold green]Summary: {result.passed}/{result.total} passed[/]")
+
+
+def _print_checkpoint_result(i: int, r):
+    """Print a single checkpoint result."""
+    status = "[bold green]✓[/]" if r.passed else "[bold red]✗[/]"
+    console.print(f"{status} Checkpoint {i} (line {r.checkpoint.line_number}): ", end="")
+    console.print("[green]PASS[/]" if r.passed else "[red]FAIL[/]")
+
+    if r.expected_lines:
+        console.print(f"    Expected: lines {r.expected_lines[0]}-{r.expected_lines[1]}")
+    if r.visible_lines:
+        console.print(f"    Visible:  lines {r.visible_lines[0]}-{r.visible_lines[1]}")
+    if r.error_message:
+        console.print(f"    [red]Error: {r.error_message}[/]")
+    if r.screenshot_path:
+        console.print(f"    Screenshot: {r.screenshot_path}")
+    console.print()
 
 
 if __name__ == "__main__":

@@ -28,23 +28,29 @@ def check_ttyd() -> bool:
 
 
 def find_ttyd() -> str:
-    """Find ttyd executable, checking common locations.
+    """Find ttyd executable, checking common locations."""
+    path = _search_ttyd_path()
+    if path:
+        return path
+    raise RuntimeError(_ttyd_not_found_msg())
 
-    Raises:
-        RuntimeError: If ttyd is not found
-    """
+
+def _search_ttyd_path() -> str | None:
+    """Search for ttyd in PATH and common locations."""
     local_bin = str(Path.home() / ".local/bin")
     search_path = f"{local_bin}:{os.environ.get('PATH', '')}"
+    path = shutil.which("ttyd", path=search_path)
+    if path:
+        return path
+    for p in ["/usr/local/bin/ttyd", f"{local_bin}/ttyd"]:
+        if Path(p).exists():
+            return p
+    return None
 
-    ttyd_path = shutil.which("ttyd", path=search_path)
-    if ttyd_path:
-        return ttyd_path
 
-    for path in ["/usr/local/bin/ttyd", f"{local_bin}/ttyd"]:
-        if Path(path).exists():
-            return path
-
-    raise RuntimeError(
+def _ttyd_not_found_msg() -> str:
+    """Return error message for missing ttyd."""
+    return (
         "ttyd not found. Install with:\n"
         "  wget -qO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64\n"
         "  chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/ttyd"
@@ -78,22 +84,16 @@ def start_ttyd(
     env: dict[str, str] | None = None,
     ttyd_path: str | None = None,
 ) -> subprocess.Popen:
-    """Start ttyd subprocess.
+    """Start ttyd subprocess."""
+    ttyd_path = ttyd_path or find_ttyd()
+    env = env or make_clean_env()
+    cmd = _build_ttyd_cmd(ttyd_path, port)
+    return subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    Args:
-        port: Port to listen on
-        env: Environment variables (uses make_clean_env() if None)
-        ttyd_path: Path to ttyd binary (auto-detected if None)
 
-    Returns:
-        The subprocess.Popen object
-    """
-    if ttyd_path is None:
-        ttyd_path = find_ttyd()
-    if env is None:
-        env = make_clean_env()
-
-    cmd = [
+def _build_ttyd_cmd(ttyd_path: str, port: int) -> list[str]:
+    """Build ttyd command line."""
+    return [
         ttyd_path,
         "-p",
         str(port),
@@ -103,12 +103,6 @@ def start_ttyd(
         "--norc",
         "--noprofile",
     ]
-    return subprocess.Popen(
-        cmd,
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
 
 
 def stop_ttyd(process: subprocess.Popen | None) -> None:

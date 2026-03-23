@@ -77,6 +77,17 @@ def record(script: Path, output: Path | None, voice: str | None, dry_run: bool):
     console.print(f"[bold blue]demorec[/] v{__version__}")
     console.print(f"[dim]Recording:[/] {script}")
 
+    plan = _parse_and_configure(script, output, voice)
+    _print_plan_summary(plan)
+
+    if not dry_run:
+        _run_recording(plan)
+    else:
+        console.print("\n[yellow]Dry run - not recording[/]")
+
+
+def _parse_and_configure(script: Path, output: Path | None, voice: str | None) -> Plan:
+    """Parse script and apply overrides."""
     try:
         plan = parse_script(script)
     except Exception as e:
@@ -87,14 +98,7 @@ def record(script: Path, output: Path | None, voice: str | None, dry_run: bool):
         plan.output = output
     if voice:
         plan.voice = voice
-
-    _print_plan_summary(plan)
-
-    if dry_run:
-        console.print("\n[yellow]Dry run - not recording[/]")
-        return
-
-    _run_recording(plan)
+    return plan
 
 
 @main.command()
@@ -159,34 +163,29 @@ def install():
     help="Output format",
 )
 def stage(rows: int, highlights: str, output_format: str):
-    """Calculate vim stage directions for highlighting code blocks.
+    """Calculate vim stage directions for highlighting code blocks."""
+    blocks = _parse_blocks(highlights)
+    directions = calculate_stage_directions(rows, blocks)
+    _output_directions(directions, rows, output_format)
 
-    Given terminal dimensions and line ranges to highlight, outputs
-    the optimal vim commands for scrolling and selecting each block.
 
-    Examples:
-
-        demorec stage --rows 30 --highlights "6-7,11-16,26-34"
-
-        demorec stage -r 30 -h "10-20,45-60" --format json
-
-        demorec stage -r 30 -h "1-10,50-60" --format demorec
-    """
+def _parse_blocks(highlights: str) -> list:
+    """Parse highlight blocks with error handling."""
     try:
-        blocks = parse_highlights(highlights)
+        return parse_highlights(highlights)
     except ValueError as e:
         console.print(f"[bold red]Error parsing highlights:[/] {e}")
         console.print("Expected format: '6-7,11-16,26-34' (comma-separated line ranges)")
         raise SystemExit(1)
 
-    directions = calculate_stage_directions(rows, blocks)
 
-    if output_format == "json":
-        print(format_directions_json(directions, rows))
-    elif output_format == "demorec":
-        print(format_directions_demorec(directions))
-    else:
-        print(format_directions_text(directions, rows))
+def _output_directions(directions: list, rows: int, output_format: str):
+    """Output directions in the specified format."""
+    formatters = {
+        "json": lambda: format_directions_json(directions, rows),
+        "demorec": lambda: format_directions_demorec(directions),
+    }
+    print(formatters.get(output_format, lambda: format_directions_text(directions, rows))())
 
 
 @main.command()
@@ -304,18 +303,19 @@ def _run_preview(script, segment, rows, screenshot_mode, output_dir):
     from rich.progress import Progress, SpinnerColumn, TextColumn
 
     previewer = TerminalPreviewer(rows=rows, screenshots=screenshot_mode)
+    cols = [SpinnerColumn(), TextColumn("[progress.description]{task.description}")]
+    with Progress(*cols, console=console) as p:
+        p.add_task("Running preview...", total=None)
+        return _execute_preview(previewer, script, segment, output_dir)
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        progress.add_task("Running preview...", total=None)
-        try:
-            return previewer.preview(script, segment, output_dir)
-        except Exception as e:
-            console.print(f"[bold red]Preview error:[/] {e}")
-            raise SystemExit(1)
+
+def _execute_preview(previewer, script, segment, output_dir):
+    """Execute preview with error handling."""
+    try:
+        return previewer.preview(script, segment, output_dir)
+    except Exception as e:
+        console.print(f"[bold red]Preview error:[/] {e}")
+        raise SystemExit(1)
 
 
 def _print_preview_results(result):

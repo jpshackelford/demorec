@@ -45,29 +45,24 @@ class TerminalSize:
 
 
 async def setup_terminal(page: Any, config: TerminalConfig) -> TerminalSize | None:
-    """Set up terminal with full viewport and optional row targeting.
+    """Set up terminal with full viewport and optional row targeting."""
+    result = await page.evaluate(SETUP_TERMINAL_JS, _config_to_dict(config))
+    return _parse_terminal_result(result) if result else None
 
-    Args:
-        page: Playwright page object
-        config: Terminal configuration
 
-    Returns:
-        TerminalSize with final dimensions, or None if term not found
-    """
-    result = await page.evaluate(
-        SETUP_TERMINAL_JS,
-        {
-            "fontSize": config.font_size,
-            "fontFamily": config.font_family,
-            "lineHeight": config.line_height,
-            "theme": config.theme,
-            "desiredRows": config.desired_rows,
-        },
-    )
+def _config_to_dict(config: TerminalConfig) -> dict:
+    """Convert TerminalConfig to JS parameter dict."""
+    return {
+        "fontSize": config.font_size,
+        "fontFamily": config.font_family,
+        "lineHeight": config.line_height,
+        "theme": config.theme,
+        "desiredRows": config.desired_rows,
+    }
 
-    if not result:
-        return None
 
+def _parse_terminal_result(result: dict) -> TerminalSize:
+    """Parse JS result into TerminalSize."""
     return TerminalSize(
         rows=result["rows"],
         cols=result["cols"],
@@ -77,41 +72,29 @@ async def setup_terminal(page: Any, config: TerminalConfig) -> TerminalSize | No
 
 
 async def fit_to_rows(
-    page: Any,
-    desired_rows: int,
-    max_iterations: int = 5,
-    delay: float = 0.2,
+    page: Any, desired_rows: int, max_iterations: int = 5, delay: float = 0.2
 ) -> TerminalSize | None:
-    """Iteratively adjust font size to achieve target row count.
-
-    Args:
-        page: Playwright page object
-        desired_rows: Target number of rows
-        max_iterations: Maximum adjustment iterations
-        delay: Delay between iterations in seconds
-
-    Returns:
-        Final TerminalSize, or None if term not found
-    """
+    """Iteratively adjust font size to achieve target row count."""
+    size = None
     for _ in range(max_iterations):
-        result = await page.evaluate(FIT_TO_ROWS_JS, desired_rows)
-
-        if not result:
-            return None
-
-        size = TerminalSize(
-            rows=result["rows"],
-            cols=result["cols"],
-            font_size=result["fontSize"],
-            done=result.get("done", False),
-        )
-
-        if size.done:
+        size = await _fit_iteration(page, desired_rows)
+        if not size or size.done:
             return size
-
         await asyncio.sleep(delay)
-
     return size
+
+
+async def _fit_iteration(page: Any, desired_rows: int) -> TerminalSize | None:
+    """Run one font size adjustment iteration."""
+    result = await page.evaluate(FIT_TO_ROWS_JS, desired_rows)
+    if not result:
+        return None
+    return TerminalSize(
+        rows=result["rows"],
+        cols=result["cols"],
+        font_size=result["fontSize"],
+        done=result.get("done", False),
+    )
 
 
 @dataclass

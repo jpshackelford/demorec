@@ -134,39 +134,41 @@ class BrowserRecorder:
     async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
         from playwright.async_api import async_playwright
 
-        timestamps: dict[int, tuple[float, float]] = {}
-
         async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            context = await browser.new_context(
-                viewport={"width": self.width, "height": self.height},
-                record_video_dir=str(output.parent),
-                record_video_size={"width": self.width, "height": self.height},
-            )
-            page = await context.new_page()
-
-            recording_start = time.time()
-
-            for cmd_idx, cmd in enumerate(segment.commands):
-                narration = self._timed_narrations.get(cmd_idx)
-
-                # Handle "before" narration - add delay before command
-                if narration and narration.mode == "before":
-                    await asyncio.sleep(narration.duration)
-
-                cmd_start = time.time() - recording_start
-                await self._execute_command(page, cmd)
-                cmd_end = time.time() - recording_start
-                timestamps[cmd_idx] = (cmd_start, cmd_end)
-
-                # Handle "after" narration - add delay after command
-                if narration and narration.mode == "after":
-                    await asyncio.sleep(narration.duration)
-
+            context, page = await self._create_browser_context(p, output)
+            timestamps = await self._execute_commands(page, segment)
             await context.close()
-            await browser.close()
 
         self._finalize_video(output)
+        return timestamps
+
+    async def _create_browser_context(self, playwright, output: Path):
+        """Create browser context with video recording."""
+        browser = await playwright.chromium.launch()
+        context = await browser.new_context(
+            viewport={"width": self.width, "height": self.height},
+            record_video_dir=str(output.parent),
+            record_video_size={"width": self.width, "height": self.height},
+        )
+        return context, await context.new_page()
+
+    async def _execute_commands(self, page, segment: Segment) -> dict[int, tuple[float, float]]:
+        """Execute commands with timestamp tracking."""
+        timestamps: dict[int, tuple[float, float]] = {}
+        recording_start = time.time()
+
+        for cmd_idx, cmd in enumerate(segment.commands):
+            narration = self._timed_narrations.get(cmd_idx)
+            if narration and narration.mode == "before":
+                await asyncio.sleep(narration.duration)
+
+            cmd_start = time.time() - recording_start
+            await self._execute_command(page, cmd)
+            timestamps[cmd_idx] = (cmd_start, time.time() - recording_start)
+
+            if narration and narration.mode == "after":
+                await asyncio.sleep(narration.duration)
+
         return timestamps
 
     def _finalize_video(self, output: Path):

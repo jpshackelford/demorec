@@ -124,23 +124,30 @@ class _Tokenizer:
     def tokenize(self) -> list[str]:
         """Tokenize the line and return list of tokens."""
         while self.i < len(self.line):
-            c = self.line[self.i]
-            if self.in_quotes:
-                if self._handle_escape():
-                    continue
-                elif c == self.quote_char:
-                    self._close_quote()
-                else:
-                    self.current += c
-            elif c in ('"', "'"):
-                self._open_quote(c)
-            elif c.isspace():
-                self._flush_token()
-            else:
-                self.current += c
+            self._process_char(self.line[self.i])
             self.i += 1
         self._flush_token()
         return self.tokens
+
+    def _process_char(self, c: str):
+        """Process a single character."""
+        if self.in_quotes:
+            self._process_quoted_char(c)
+        elif c in ('"', "'"):
+            self._open_quote(c)
+        elif c.isspace():
+            self._flush_token()
+        else:
+            self.current += c
+
+    def _process_quoted_char(self, c: str):
+        """Process a character inside quotes."""
+        if self._handle_escape():
+            self.i -= 1  # Will be incremented by caller
+        elif c == self.quote_char:
+            self._close_quote()
+        else:
+            self.current += c
 
 
 def tokenize_line(line: str) -> list[str]:
@@ -198,33 +205,40 @@ def _handle_mode_switch(args: list[str], ctx: _ParseContext):
 
 
 def _handle_terminal_directive(directive: str, args: list[str], ctx: _ParseContext) -> bool:
-    """Handle @terminal:size and @terminal:rows directives. Returns True if handled."""
-    # @terminal:size large|medium|small|tiny (preset)
+    """Handle @terminal:size and @terminal:rows directives."""
     if directive == "size" and args:
-        size = args[0].lower()
-        if size in ("large", "medium", "small", "tiny"):
-            if ctx.current_segment and ctx.current_segment.mode == "terminal":
-                ctx.current_segment.size = size
-            elif ctx.current_segment is None:
-                ctx.current_segment = Segment(mode="terminal", size=size)
-                ctx.plan.segments.append(ctx.current_segment)
-        return True
-
-    # @terminal:rows N (explicit row count)
+        return _handle_size_directive(args[0].lower(), ctx)
     if directive == "rows" and args:
-        try:
-            rows = int(args[0])
-            if 10 <= rows <= 100:  # Reasonable bounds
-                if ctx.current_segment and ctx.current_segment.mode == "terminal":
-                    ctx.current_segment.rows = rows
-                elif ctx.current_segment is None:
-                    ctx.current_segment = Segment(mode="terminal", rows=rows)
-                    ctx.plan.segments.append(ctx.current_segment)
-        except ValueError:
-            pass  # Invalid row count, ignore
-        return True
-
+        return _handle_rows_directive(args[0], ctx)
     return False
+
+
+def _handle_size_directive(size: str, ctx: _ParseContext) -> bool:
+    """Handle @terminal:size preset directive."""
+    if size not in ("large", "medium", "small", "tiny"):
+        return True
+    _set_terminal_attr(ctx, "size", size)
+    return True
+
+
+def _handle_rows_directive(rows_str: str, ctx: _ParseContext) -> bool:
+    """Handle @terminal:rows directive."""
+    try:
+        rows = int(rows_str)
+        if 10 <= rows <= 100:
+            _set_terminal_attr(ctx, "rows", rows)
+    except ValueError:
+        pass
+    return True
+
+
+def _set_terminal_attr(ctx: _ParseContext, attr: str, value):
+    """Set attribute on current terminal segment, creating one if needed."""
+    if ctx.current_segment and ctx.current_segment.mode == "terminal":
+        setattr(ctx.current_segment, attr, value)
+    elif ctx.current_segment is None:
+        ctx.current_segment = Segment(mode="terminal", **{attr: value})
+        ctx.plan.segments.append(ctx.current_segment)
 
 
 def _ensure_segment(ctx: _ParseContext):
@@ -251,33 +265,37 @@ def parse_script(path: Path) -> Plan:
     ctx = _ParseContext(plan=Plan())
 
     with open(path) as f:
-        lines = f.readlines()
-
-    for line_num, line in enumerate(lines, 1):
-        line = line.strip()
-        if not line:
-            continue
-
-        if line.startswith("#"):
-            _parse_comment(line, line_num, ctx)
-            continue
-
-        tokens = tokenize_line(line)
-        if not tokens:
-            continue
-
-        cmd_name, cmd_args = tokens[0], [parse_string(t) for t in tokens[1:]]
-
-        if cmd_name == "Output" and cmd_args:
-            ctx.plan.output = Path(cmd_args[0])
-        elif cmd_name == "Set":
-            _handle_set_directive(cmd_args, line_num, ctx)
-        elif cmd_name == "@mode":
-            _handle_mode_switch(cmd_args, ctx)
-        elif cmd_name.startswith("@terminal:"):
-            directive = cmd_name.split(":", 1)[1].lower()
-            _handle_terminal_directive(directive, cmd_args, ctx)
-        else:
-            _add_command(cmd_name, cmd_args, line_num, ctx)
+        for line_num, line in enumerate(f, 1):
+            _parse_line(line.strip(), line_num, ctx)
 
     return ctx.plan
+
+
+def _parse_line(line: str, line_num: int, ctx: _ParseContext):
+    """Parse a single line from the script."""
+    if not line:
+        return
+    if line.startswith("#"):
+        _parse_comment(line, line_num, ctx)
+        return
+
+    tokens = tokenize_line(line)
+    if tokens:
+        _dispatch_command(tokens, line_num, ctx)
+
+
+def _dispatch_command(tokens: list[str], line_num: int, ctx: _ParseContext):
+    """Dispatch a parsed command to the appropriate handler."""
+    cmd_name, cmd_args = tokens[0], [parse_string(t) for t in tokens[1:]]
+
+    if cmd_name == "Output" and cmd_args:
+        ctx.plan.output = Path(cmd_args[0])
+    elif cmd_name == "Set":
+        _handle_set_directive(cmd_args, line_num, ctx)
+    elif cmd_name == "@mode":
+        _handle_mode_switch(cmd_args, ctx)
+    elif cmd_name.startswith("@terminal:"):
+        directive = cmd_name.split(":", 1)[1].lower()
+        _handle_terminal_directive(directive, cmd_args, ctx)
+    else:
+        _add_command(cmd_name, cmd_args, line_num, ctx)

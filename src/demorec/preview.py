@@ -103,27 +103,29 @@ class TerminalPreviewer:
         """Run the browser session and execute commands."""
         from playwright.async_api import async_playwright
 
-        results: list[CheckpointResult] = []
-
         async with async_playwright() as p:
             browser = await p.chromium.launch()
             page = await self._setup_browser_page(browser, port)
-
             await self._setup_terminal(page)
-            checkpoint_map = {cp.command_index: cp for cp in checkpoints}
-
-            for cmd_idx, cmd in enumerate(segment.commands):
-                await self._execute_command(page, cmd)
-                if cmd_idx in checkpoint_map:
-                    await asyncio.sleep(0.5)
-                    cp = checkpoint_map[cmd_idx]
-                    result = await self._verify_checkpoint(
-                        page, cp, screenshot_dir, len(results) + 1
-                    )
-                    results.append(result)
-
+            results = await self._run_commands(page, segment, checkpoints, screenshot_dir)
             await browser.close()
+        return results
 
+    async def _run_commands(
+        self, page, segment, checkpoints: list[Checkpoint], screenshot_dir: Path | None
+    ) -> list[CheckpointResult]:
+        """Execute commands and verify checkpoints."""
+        results: list[CheckpointResult] = []
+        checkpoint_map = {cp.command_index: cp for cp in checkpoints}
+
+        for cmd_idx, cmd in enumerate(segment.commands):
+            await self._execute_command(page, cmd)
+            if cmd_idx in checkpoint_map:
+                await asyncio.sleep(0.5)
+                result = await self._verify_checkpoint(
+                    page, checkpoint_map[cmd_idx], screenshot_dir, len(results) + 1
+                )
+                results.append(result)
         return results
 
     async def _setup_browser_page(self, browser, port: int):
@@ -169,13 +171,18 @@ class TerminalPreviewer:
     def _process_escape(self, state: dict) -> Checkpoint | None:
         """Process Escape command and create checkpoint if in visual mode."""
         if not (state["in_visual"] and state["visual_start"] and state["goto"]):
-            state["in_visual"] = False
-            state["visual_start"] = None
+            self._clear_visual_state(state)
             return None
 
-        start = min(state["visual_start"], state["goto"])
-        end = max(state["visual_start"], state["goto"])
-        checkpoint = Checkpoint(
+        checkpoint = self._create_visual_checkpoint(state)
+        self._clear_visual_state(state)
+        return checkpoint
+
+    def _create_visual_checkpoint(self, state: dict) -> Checkpoint:
+        """Create checkpoint for visual selection."""
+        vs, gt = state["visual_start"], state["goto"]
+        start, end = min(vs, gt), max(vs, gt)
+        return Checkpoint(
             line_number=state["goto_idx"],
             command_index=state["goto_idx"],
             event_type="visual_selection",
@@ -183,9 +190,9 @@ class TerminalPreviewer:
             expected_highlight=(start, end),
         )
 
-        state["in_visual"] = False
-        state["visual_start"] = None
-        return checkpoint
+    def _clear_visual_state(self, state: dict):
+        """Clear visual mode state."""
+        state["in_visual"], state["visual_start"] = False, None
 
     async def _setup_terminal(self, page):
         """Set up terminal with proper sizing using xterm module."""
@@ -198,23 +205,27 @@ class TerminalPreviewer:
 
     async def _execute_command(self, page, cmd):
         """Execute a single command."""
+        await self._dispatch_command(page, cmd)
+        await asyncio.sleep(0.05)
+
+    async def _dispatch_command(self, page, cmd):
+        """Dispatch command to appropriate handler."""
         if cmd.name == "Type":
-            text = cmd.args[0] if cmd.args else ""
-            for char in text:
-                await page.keyboard.type(char, delay=0)
-                await asyncio.sleep(0.02)
+            await self._type_text(page, cmd.args[0] if cmd.args else "")
         elif cmd.name == "Enter":
             await page.keyboard.press("Enter")
         elif cmd.name == "Escape":
             await page.keyboard.press("Escape")
         elif cmd.name == "Sleep":
-            duration = self._parse_duration(cmd.args[0]) if cmd.args else 0.5
-            await asyncio.sleep(duration)
-        elif cmd.name == "Ctrl+l" or cmd.name == "Clear":
+            await asyncio.sleep(self._parse_duration(cmd.args[0]) if cmd.args else 0.5)
+        elif cmd.name in ("Ctrl+l", "Clear"):
             await page.keyboard.press("Control+l")
 
-        # Small delay between commands
-        await asyncio.sleep(0.05)
+    async def _type_text(self, page, text: str):
+        """Type text character by character."""
+        for char in text:
+            await page.keyboard.type(char, delay=0)
+            await asyncio.sleep(0.02)
 
     def _parse_duration(self, duration_str: str) -> float:
         """Parse duration string like '1s', '500ms', '0.5s'."""
@@ -231,24 +242,29 @@ class TerminalPreviewer:
     ) -> CheckpointResult:
         """Verify a checkpoint and return result."""
         buffer_state = await get_buffer_state(page)
-        visible_lines = buffer_state.visible_lines if buffer_state else []
-        visible_line_range = self._extract_line_range(visible_lines)
-
-        passed, error_message = self._check_visibility(
-            checkpoint.expected_highlight, visible_line_range
-        )
-
-        screenshot_path = await self._maybe_screenshot(
+        visible_range = self._extract_line_range(buffer_state.visible_lines if buffer_state else [])
+        passed, error = self._check_visibility(checkpoint.expected_highlight, visible_range)
+        screenshot = await self._maybe_screenshot(
             page, screenshot_dir, checkpoint_num, checkpoint.event_type, passed
         )
+        return self._build_result(checkpoint, passed, visible_range, screenshot, error)
 
+    def _build_result(
+        self,
+        cp: Checkpoint,
+        passed: bool,
+        visible: tuple,
+        screenshot: Path | None,
+        error: str | None,
+    ) -> CheckpointResult:
+        """Build checkpoint result."""
         return CheckpointResult(
-            checkpoint=checkpoint,
+            checkpoint=cp,
             passed=passed,
-            expected_lines=checkpoint.expected_highlight,
-            visible_lines=visible_line_range,
-            screenshot_path=screenshot_path,
-            error_message=error_message,
+            expected_lines=cp.expected_highlight,
+            visible_lines=visible,
+            screenshot_path=screenshot,
+            error_message=error,
         )
 
     def _check_visibility(

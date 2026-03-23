@@ -95,23 +95,32 @@ class ElevenLabsTTS:
 
     def _build_request(self, text: str):
         """Build the API request for text-to-speech."""
-        import json
         import urllib.request
 
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}"
-        payload = json.dumps(
+        payload = self._build_payload(text)
+        headers = self._build_headers()
+        return urllib.request.Request(url, data=payload, headers=headers, method="POST")
+
+    def _build_payload(self, text: str) -> bytes:
+        """Build JSON payload for TTS request."""
+        import json
+
+        return json.dumps(
             {
                 "text": text,
                 "model_id": "eleven_turbo_v2_5",
                 "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
             }
         ).encode("utf-8")
-        headers = {
+
+    def _build_headers(self) -> dict[str, str]:
+        """Build headers for TTS request."""
+        return {
             "Accept": "audio/mpeg",
             "Content-Type": "application/json",
             "xi-api-key": self.api_key,
         }
-        return urllib.request.Request(url, data=payload, headers=headers, method="POST")
 
     def synthesize(self, text: str, output_path: Path) -> None:
         """Synthesize speech using ElevenLabs API."""

@@ -139,21 +139,27 @@ def _centering_commands(
     start_line: int, end_line: int, terminal_rows: int, centering: str
 ) -> list[tuple[str, float]]:
     """Generate commands to position the selection in viewport."""
-    num_lines = end_line - start_line + 1
-    available_rows = terminal_rows - 2
-
     if centering == "auto":
-        if num_lines <= available_rows // 2:
-            center_line = (start_line + end_line) // 2
-            return [(f"{center_line}G", 0.2), ("zz", 0.3)]
-        return [(f"{start_line}G", 0.2), ("zt", 0.3)]
-    elif centering == "top":
-        return [(f"{start_line}G", 0.2), ("zt", 0.3)]
-    elif centering == "center":
-        center_line = (start_line + end_line) // 2
-        return [(f"{center_line}G", 0.2), ("zz", 0.3)]
-    elif centering == "bottom":
-        return [(f"{end_line}G", 0.2), ("zb", 0.3)]
+        return _auto_centering(start_line, end_line, terminal_rows)
+    return _fixed_centering(start_line, end_line, centering)
+
+
+def _auto_centering(start: int, end: int, rows: int) -> list[tuple[str, float]]:
+    """Auto-select centering based on selection size."""
+    num_lines, available = end - start + 1, rows - 2
+    if num_lines <= available // 2:
+        return [(f"{(start + end) // 2}G", 0.2), ("zz", 0.3)]
+    return [(f"{start}G", 0.2), ("zt", 0.3)]
+
+
+def _fixed_centering(start: int, end: int, mode: str) -> list[tuple[str, float]]:
+    """Apply fixed centering mode."""
+    if mode == "top":
+        return [(f"{start}G", 0.2), ("zt", 0.3)]
+    if mode == "center":
+        return [(f"{(start + end) // 2}G", 0.2), ("zz", 0.3)]
+    if mode == "bottom":
+        return [(f"{end}G", 0.2), ("zb", 0.3)]
     return []
 
 
@@ -196,37 +202,26 @@ def generate_close_commands(state: VimState) -> list[tuple[str, float]]:
 def generate_goto_commands(
     line: int, state: VimState, centering: str = "center"
 ) -> list[tuple[str, float]]:
-    """Generate commands to go to a specific line.
-
-    Args:
-        line: Line number to go to
-        state: VimState to update
-        centering: How to position the line ("top", "center", "bottom")
-
-    Returns:
-        List of (keys_to_type, delay_after) tuples
-    """
-    commands = []
-
-    # Exit visual mode if needed
-    if state.in_visual_mode:
-        commands.append(("ESCAPE", 0.2))
-        state.in_visual_mode = False
-
-    # Go to line
+    """Generate commands to go to a specific line."""
+    commands = _exit_visual_if_needed(state)
     commands.append((f"{line}G", 0.2))
-
-    # Center appropriately
-    if centering == "top":
-        commands.append(("zt", 0.3))
-    elif centering == "center":
-        commands.append(("zz", 0.3))
-    elif centering == "bottom":
-        commands.append(("zb", 0.3))
-
+    commands.extend(_get_centering_cmd(centering))
     state.current_line = line
-
     return commands
+
+
+def _exit_visual_if_needed(state: VimState) -> list[tuple[str, float]]:
+    """Exit visual mode if active."""
+    if state.in_visual_mode:
+        state.in_visual_mode = False
+        return [("ESCAPE", 0.2)]
+    return []
+
+
+def _get_centering_cmd(centering: str) -> list[tuple[str, float]]:
+    """Get centering command for the specified mode."""
+    cmds = {"top": [("zt", 0.3)], "center": [("zz", 0.3)], "bottom": [("zb", 0.3)]}
+    return cmds.get(centering, [])
 
 
 class VimCommandExpander:
@@ -246,38 +241,33 @@ class VimCommandExpander:
         self.state.terminal_rows = rows
 
     def expand_command(self, cmd_name: str, cmd_args: list[str]) -> list[tuple[str, float]]:
-        """Expand a high-level command into keystrokes.
+        """Expand a high-level command into keystrokes."""
+        handlers = {
+            "Open": self._expand_open,
+            "Highlight": self._expand_highlight,
+            "Close": self._expand_close,
+            "Goto": self._expand_goto,
+        }
+        handler = handlers.get(cmd_name)
+        return handler(cmd_args) if handler else []
 
-        Args:
-            cmd_name: Command name (Open, Highlight, Close, Goto)
-            cmd_args: Command arguments
+    def _expand_open(self, args: list[str]) -> list[tuple[str, float]]:
+        return generate_open_commands(args[0], self.state) if args else []
 
-        Returns:
-            List of (keys_to_type, delay_after) tuples
-            Special keys: "ENTER", "ESCAPE", "TAB"
-        """
-        commands = []
+    def _expand_highlight(self, args: list[str]) -> list[tuple[str, float]]:
+        if not args:
+            return []
+        centering = args[1] if len(args) > 1 else "auto"
+        return generate_highlight_commands(args[0], self.state, centering)
 
-        if cmd_name == "Open":
-            if cmd_args:
-                commands.extend(generate_open_commands(cmd_args[0], self.state))
+    def _expand_close(self, args: list[str]) -> list[tuple[str, float]]:
+        return generate_close_commands(self.state)
 
-        elif cmd_name == "Highlight":
-            if cmd_args:
-                line_range = cmd_args[0]
-                centering = cmd_args[1] if len(cmd_args) > 1 else "auto"
-                commands.extend(generate_highlight_commands(line_range, self.state, centering))
-
-        elif cmd_name == "Close":
-            commands.extend(generate_close_commands(self.state))
-
-        elif cmd_name == "Goto":
-            if cmd_args:
-                line = int(cmd_args[0])
-                centering = cmd_args[1] if len(cmd_args) > 1 else "center"
-                commands.extend(generate_goto_commands(line, self.state, centering))
-
-        return commands
+    def _expand_goto(self, args: list[str]) -> list[tuple[str, float]]:
+        if not args:
+            return []
+        centering = args[1] if len(args) > 1 else "center"
+        return generate_goto_commands(int(args[0]), self.state, centering)
 
     def is_vim_command(self, cmd_name: str) -> bool:
         """Check if a command is a high-level vim command."""

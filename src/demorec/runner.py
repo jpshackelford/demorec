@@ -140,92 +140,77 @@ class Runner:
     def _generate_narration(self):
         """Pre-generate all narration audio clips and get durations."""
         engine = get_tts_engine(self.plan.voice)
-
         narration_idx = 0
+
         for segment in self.plan.segments:
             for cmd_idx, narration in segment.narrations.items():
-                audio_file = self.temp_dir / f"narration_{narration_idx:03d}.mp3"
-                engine.synthesize(narration.text, audio_file)
-
-                duration = get_audio_duration(audio_file)
-
-                timed = TimedNarration(
-                    text=narration.text,
-                    mode=narration.mode,
-                    audio_path=audio_file,
-                    duration=duration,
-                    cmd_index=cmd_idx,
-                )
-                self.timed_narrations.append(timed)
-
-                # Attach to segment for recorder to use
-                if not hasattr(segment, "timed_narrations"):
-                    segment.timed_narrations = {}
-                segment.timed_narrations[cmd_idx] = timed
-
+                timed = self._synthesize_narration(engine, narration, cmd_idx, narration_idx)
+                self._attach_to_segment(segment, cmd_idx, timed)
                 narration_idx += 1
 
+    def _synthesize_narration(self, engine, narration, cmd_idx: int, idx: int) -> "TimedNarration":
+        """Synthesize a single narration and return TimedNarration."""
+        audio_file = self.temp_dir / f"narration_{idx:03d}.mp3"
+        engine.synthesize(narration.text, audio_file)
+        duration = get_audio_duration(audio_file)
+
+        timed = TimedNarration(
+            text=narration.text,
+            mode=narration.mode,
+            audio_path=audio_file,
+            duration=duration,
+            cmd_index=cmd_idx,
+        )
+        self.timed_narrations.append(timed)
+        return timed
+
+    def _attach_to_segment(self, segment: Segment, cmd_idx: int, timed: "TimedNarration"):
+        """Attach timed narration to segment for recorder."""
+        if not hasattr(segment, "timed_narrations"):
+            segment.timed_narrations = {}
+        segment.timed_narrations[cmd_idx] = timed
+
     def _record_segment(self, segment: Segment, output: Path, time_offset: float = 0.0) -> float:
-        """Record a single segment.
-
-        Args:
-            segment: The segment to record
-            output: Output video file path
-            time_offset: Starting time offset for this segment
-
-        Returns:
-            The duration of the recorded segment in seconds
-        """
+        """Record a single segment and return its duration."""
         timed_narrations = getattr(segment, "timed_narrations", {})
-
-        if segment.mode == "terminal":
-            recorder = TerminalRecorder(
-                width=self.plan.width,
-                height=self.plan.height,
-                framerate=self.plan.framerate,
-                size=segment.size,
-                rows=segment.rows,
-            )
-        else:
-            recorder = BrowserRecorder(
-                width=self.plan.width,
-                height=self.plan.height,
-                framerate=self.plan.framerate,
-            )
-
+        recorder = self._create_recorder(segment)
         timestamps = recorder.record(segment, output, timed_narrations)
-
-        # Update narration start times based on recorded timestamps
-        for cmd_idx, timed in timed_narrations.items():
-            if cmd_idx in timestamps:
-                cmd_start, cmd_end = timestamps[cmd_idx]
-                if timed.mode == "before":
-                    timed.start_time = time_offset + cmd_start - timed.duration
-                elif timed.mode == "during":
-                    timed.start_time = time_offset + cmd_start
-                elif timed.mode == "after":
-                    timed.start_time = time_offset + cmd_end
-
+        self._update_narration_times(timed_narrations, timestamps, time_offset)
         return get_duration(output)
+
+    def _create_recorder(self, segment: Segment):
+        """Create appropriate recorder for segment mode."""
+        base = dict(width=self.plan.width, height=self.plan.height, framerate=self.plan.framerate)
+        if segment.mode == "terminal":
+            return TerminalRecorder(**base, size=segment.size, rows=segment.rows)
+        return BrowserRecorder(**base)
+
+    def _update_narration_times(self, timed_narrations: dict, timestamps: dict, offset: float):
+        """Update narration start times based on recorded timestamps."""
+        for cmd_idx, timed in timed_narrations.items():
+            if cmd_idx not in timestamps:
+                continue
+            cmd_start, cmd_end = timestamps[cmd_idx]
+            if timed.mode == "before":
+                timed.start_time = offset + cmd_start - timed.duration
+            elif timed.mode == "during":
+                timed.start_time = offset + cmd_start
+            elif timed.mode == "after":
+                timed.start_time = offset + cmd_end
 
     def _concat_segments(self, output: Path):
         """Concatenate all segment files using FFmpeg."""
         concat_file = self.temp_dir / "concat.txt"
         write_concat_file(concat_file, self.segment_files)
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(concat_file),
-            "-c",
-            "copy",
-            str(output),
-        ]
+        cmd = self._build_segment_concat_cmd(concat_file, output)
         run_ffmpeg(cmd, "FFmpeg concat failed")
+
+    # fmt: off
+    def _build_segment_concat_cmd(self, concat_file: Path, output: Path) -> list[str]:
+        """Build FFmpeg segment concat command."""
+        return ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", str(concat_file), "-c", "copy", str(output)]
+    # fmt: on
 
     def cleanup(self):
         """Remove temporary files."""

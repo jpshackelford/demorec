@@ -126,31 +126,27 @@ def _no_scroll_direction(block: Block, visible_range: tuple[int, int]) -> StageD
     )
 
 
+# fmt: off
 def _scroll_direction(block: Block, visible_rows: int) -> tuple[StageDirection, tuple[int, int]]:
     """Create direction when scrolling is needed."""
-    scroll_to = block.middle
-    scroll_method = "zz"
-    new_view = calculate_visible_range(scroll_to, visible_rows, scroll_method)
-
-    # Check if block fits after scroll
-    if not (block.start >= new_view[0] and block.end <= new_view[1]):
-        scroll_to = block.start
-        scroll_method = "zt"
-        new_view = calculate_visible_range(scroll_to, visible_rows, scroll_method)
-        notes = ["Block larger than view, showing from top"]
-    else:
-        notes = ["Scroll to center block"]
-
+    scroll_to, method, notes = _determine_scroll(block, visible_rows)
+    new_view = calculate_visible_range(scroll_to, visible_rows, method)
+    cmds = [f"{scroll_to}G{method}", f"{block.start}GV{block.end}G"]
     direction = StageDirection(
-        block=block,
-        needs_scroll=True,
-        scroll_to=scroll_to,
-        scroll_method=scroll_method,
-        visible_range=new_view,
-        commands=[f"{scroll_to}G{scroll_method}", f"{block.start}GV{block.end}G"],
-        notes=notes,
-    )
+        block=block, needs_scroll=True, scroll_to=scroll_to, scroll_method=method,
+        visible_range=new_view, commands=cmds, notes=notes)
     return direction, new_view
+# fmt: on
+
+
+def _determine_scroll(block: Block, visible_rows: int) -> tuple[int, str, list[str]]:
+    """Determine scroll target and method."""
+    # Try centering first
+    view = calculate_visible_range(block.middle, visible_rows, "zz")
+    if block.start >= view[0] and block.end <= view[1]:
+        return block.middle, "zz", ["Scroll to center block"]
+    # Fall back to top alignment
+    return block.start, "zt", ["Block larger than view, showing from top"]
 
 
 def format_directions_text(directions: list[StageDirection], rows: int) -> str:
@@ -181,25 +177,28 @@ def _format_direction_text(index: int, d: StageDirection) -> list[str]:
 
 def format_directions_json(directions: list[StageDirection], rows: int) -> str:
     """Format stage directions as JSON."""
-    data = {"terminal_rows": rows, "visible_rows": rows - 2, "blocks": []}
-
-    for d in directions:
-        block_data = {
-            "lines": [d.block.start, d.block.end],
-            "size": d.block.size,
-            "needs_scroll": d.needs_scroll,
-            "visible_range": list(d.visible_range),
-            "commands": d.commands,
-        }
-        if d.needs_scroll:
-            block_data["scroll_to"] = d.scroll_to
-            block_data["scroll_method"] = d.scroll_method
-        if d.notes:
-            block_data["notes"] = d.notes
-
-        data["blocks"].append(block_data)
-
+    data = {
+        "terminal_rows": rows,
+        "visible_rows": rows - 2,
+        "blocks": [_direction_to_dict(d) for d in directions],
+    }
     return json.dumps(data, indent=2)
+
+
+def _direction_to_dict(d: StageDirection) -> dict:
+    """Convert a StageDirection to a dictionary."""
+    block_data = {
+        "lines": [d.block.start, d.block.end],
+        "size": d.block.size,
+        "needs_scroll": d.needs_scroll,
+        "visible_range": list(d.visible_range),
+        "commands": d.commands,
+    }
+    if d.needs_scroll:
+        block_data.update({"scroll_to": d.scroll_to, "scroll_method": d.scroll_method})
+    if d.notes:
+        block_data["notes"] = d.notes
+    return block_data
 
 
 def format_directions_demorec(directions: list[StageDirection]) -> str:

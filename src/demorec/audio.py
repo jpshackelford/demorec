@@ -25,61 +25,51 @@ def write_concat_file(file_path: Path, files: list[Path]):
 
 def get_duration(media_path: Path) -> float:
     """Get duration of a media file in seconds."""
-    cmd = [
-        "ffprobe",
-        "-v",
-        "quiet",
-        "-print_format",
-        "json",
-        "-show_format",
-        str(media_path),
-    ]
+    cmd = _build_probe_cmd(media_path)
     result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode == 0:
-        data = json.loads(result.stdout)
-        return float(data.get("format", {}).get("duration", 0))
-    return 0.0
+    return _parse_duration(result) if result.returncode == 0 else 0.0
+
+
+def _build_probe_cmd(media_path: Path) -> list[str]:
+    """Build ffprobe command."""
+    return ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(media_path)]
+
+
+def _parse_duration(result) -> float:
+    """Parse duration from ffprobe result."""
+    data = json.loads(result.stdout)
+    return float(data.get("format", {}).get("duration", 0))
 
 
 def concat_audio_files(audio_files: list[Path], output: Path, temp_dir: Path) -> Path:
     """Concatenate multiple audio files into one."""
     concat_file = temp_dir / "narration_concat.txt"
     write_concat_file(concat_file, audio_files)
-
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        str(concat_file),
-        "-c",
-        "copy",
-        str(output),
-    ]
+    cmd = _build_concat_cmd(concat_file, output)
     run_ffmpeg(cmd, "Audio concat failed")
     return output
 
 
+# fmt: off
+def _build_concat_cmd(concat_file: Path, output: Path) -> list[str]:
+    """Build FFmpeg concat command."""
+    return ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", str(concat_file), "-c", "copy", str(output)]
+# fmt: on
+
+
 def overlay_audio(video: Path, audio: Path, output: Path):
     """Overlay audio track onto video."""
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        str(video),
-        "-i",
-        str(audio),
-        "-c:v",
-        "copy",
-        "-c:a",
-        "aac",
-        "-shortest",
-        str(output),
-    ]
+    cmd = _build_overlay_cmd(video, audio, output)
     run_ffmpeg(cmd, "Audio overlay failed")
+
+
+# fmt: off
+def _build_overlay_cmd(video: Path, audio: Path, output: Path) -> list[str]:
+    """Build FFmpeg overlay command."""
+    return ["ffmpeg", "-y", "-i", str(video), "-i", str(audio),
+            "-c:v", "copy", "-c:a", "aac", "-shortest", str(output)]
+# fmt: on
 
 
 def mix_audio_timed(video_path: Path, narrations: list, output: Path):
@@ -92,30 +82,22 @@ def mix_audio_timed(video_path: Path, narrations: list, output: Path):
     run_ffmpeg(cmd, "Audio mixing failed")
 
 
+# fmt: off
 def _build_mix_command(video_path: Path, narrations: list, output: Path) -> list[str]:
     """Build FFmpeg command for audio mixing."""
+    inputs = _build_input_args(video_path, narrations)
+    dur = str(get_duration(video_path))
+    return ["ffmpeg", "-y", *inputs, "-filter_complex", _build_audio_filter(narrations),
+            "-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-t", dur, str(output)]
+# fmt: on
+
+
+def _build_input_args(video_path: Path, narrations: list) -> list[str]:
+    """Build FFmpeg input arguments."""
     inputs = ["-i", str(video_path)]
     for n in narrations:
         inputs.extend(["-i", str(n.audio_path)])
-
-    return [
-        "ffmpeg",
-        "-y",
-        *inputs,
-        "-filter_complex",
-        _build_audio_filter(narrations),
-        "-map",
-        "0:v",
-        "-map",
-        "[aout]",
-        "-c:v",
-        "copy",
-        "-c:a",
-        "aac",
-        "-t",
-        str(get_duration(video_path)),
-        str(output),
-    ]
+    return inputs
 
 
 def _build_audio_filter(narrations: list) -> str:
@@ -148,21 +130,21 @@ def split_caption(text: str, max_len: int = 42) -> list[str]:
     """Split caption text into lines of max_len characters."""
     if len(text) <= max_len:
         return [text]
+    return _word_wrap(text.split(), max_len)
 
-    lines = []
-    current_line = ""
 
-    for word in text.split():
-        if len(current_line) + len(word) + 1 <= max_len:
-            current_line = f"{current_line} {word}".strip()
+def _word_wrap(words: list[str], max_len: int) -> list[str]:
+    """Wrap words into lines of max_len."""
+    lines, current = [], ""
+    for word in words:
+        if len(current) + len(word) + 1 <= max_len:
+            current = f"{current} {word}".strip()
         else:
-            if current_line:
-                lines.append(current_line)
-            current_line = word
-
-    if current_line:
-        lines.append(current_line)
-
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
     return lines
 
 

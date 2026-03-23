@@ -39,27 +39,27 @@ class TerminalRecorder:
         size: str | None = None,
         rows: int | None = None,
     ):
-        self.width = width
-        self.height = height
-        self.framerate = framerate
+        self._init_dimensions(width, height, framerate)
+        self._init_theme_settings()
+        self._init_row_settings(size, rows)
+        self._vim_expander = VimCommandExpander(terminal_rows=self.desired_rows or 24)
+
+    def _init_dimensions(self, width: int, height: int, framerate: int):
+        """Initialize dimension settings."""
+        self.width, self.height, self.framerate = width, height, framerate
+
+    def _init_theme_settings(self):
+        """Initialize theme and font settings."""
         self.theme = "dracula"
         self.font_family = "Monaco, 'Cascadia Code', 'Fira Code', monospace"
-        self.line_height = 1.0  # Tight line spacing for consistent row calculation
-        self.padding = 20
-        self.typing_speed = 0.05  # seconds per character
-        self._ttyd_process = None
-        self._timed_narrations = {}
+        self.line_height, self.padding, self.typing_speed = 1.0, 20, 0.05
+        self._ttyd_process, self._timed_narrations = None, {}
 
-        # Convert size preset to target rows, or use explicit row count
+    def _init_row_settings(self, size: str | None, rows: int | None):
+        """Initialize row and font size settings."""
         self.size = size
-        if rows is not None:
-            self.desired_rows = rows
-        else:
-            self.desired_rows = self.SIZE_PRESETS.get(size) if size else None
-        self.font_size = 14  # Default font size, adjusted based on desired rows
-
-        # Vim command expander for high-level primitives
-        self._vim_expander = VimCommandExpander(terminal_rows=self.desired_rows or 24)
+        self.desired_rows = rows if rows else (self.SIZE_PRESETS.get(size) if size else None)
+        self.font_size = 14
 
     def record(
         self, segment: Segment, output: Path, timed_narrations: dict = None
@@ -110,20 +110,20 @@ class TerminalRecorder:
 
         async with async_playwright() as p:
             context, page = await self._create_browser_context(p, output)
-            video_start_time = time.time()
-
-            await self._wait_for_terminal(page, port)
-            term_size = await self._setup_terminal(page)
-            self._configure_vim_rows(term_size)
-            await self._clear_terminal(page)
-
-            setup_duration = time.time() - video_start_time
-            timestamps = await self._execute_commands(page, segment)
-
+            setup_dur, timestamps = await self._record_with_timing(page, port, segment)
             await asyncio.sleep(0.5)
             await context.close()
+        return timestamps, setup_dur
 
-        return timestamps, setup_duration
+    async def _record_with_timing(self, page, port: int, segment: Segment):
+        """Record session and return setup duration and timestamps."""
+        video_start = time.time()
+        await self._wait_for_terminal(page, port)
+        term_size = await self._setup_terminal(page)
+        self._configure_vim_rows(term_size)
+        await self._clear_terminal(page)
+        setup_dur = time.time() - video_start
+        return setup_dur, await self._execute_commands(page, segment)
 
     async def _create_browser_context(self, playwright, output: Path):
         """Create browser context with video recording."""
@@ -175,7 +175,15 @@ class TerminalRecorder:
 
     async def _setup_terminal(self, page) -> dict | None:
         """Set up terminal sizing using xterm module."""
-        config = TerminalConfig(
+        config = self._build_terminal_config()
+        term_size = await setup_terminal(page, config)
+        await asyncio.sleep(0.3)
+        term_size = await self._refine_rows(page, term_size)
+        return self._term_size_to_dict(term_size) if term_size else None
+
+    def _build_terminal_config(self) -> TerminalConfig:
+        """Build terminal configuration."""
+        return TerminalConfig(
             font_size=self.font_size,
             font_family=self.font_family,
             line_height=self.line_height,
@@ -183,16 +191,15 @@ class TerminalRecorder:
             desired_rows=self.desired_rows,
         )
 
-        term_size = await setup_terminal(page, config)
-        await asyncio.sleep(0.3)
-
-        # Iterative refinement if needed
+    async def _refine_rows(self, page, term_size):
+        """Iteratively refine terminal rows if needed."""
         if self.desired_rows and term_size and term_size.rows != self.desired_rows:
-            term_size = await fit_to_rows(page, self.desired_rows, max_iterations=3)
+            return await fit_to_rows(page, self.desired_rows, max_iterations=3)
+        return term_size
 
-        if term_size:
-            return {"rows": term_size.rows, "cols": term_size.cols, "fontSize": term_size.font_size}
-        return None
+    def _term_size_to_dict(self, term_size) -> dict:
+        """Convert TerminalSize to dictionary."""
+        return {"rows": term_size.rows, "cols": term_size.cols, "fontSize": term_size.font_size}
 
     def _finalize_video(self, output: Path, trim_start: float = 0):
         """Find and convert the recorded video."""
@@ -204,27 +211,18 @@ class TerminalRecorder:
 
     def _convert_to_mp4(self, webm_path: Path, mp4_path: Path, trim_start: float = 0):
         """Convert webm to mp4 using FFmpeg, optionally trimming the start."""
-        cmd = ["ffmpeg", "-y"]
-        if trim_start > 0:
-            cmd.extend(["-ss", f"{trim_start:.2f}"])
-        cmd.extend(
-            [
-                "-i",
-                str(webm_path),
-                "-c:v",
-                "libx264",
-                "-preset",
-                "fast",
-                "-crf",
-                "22",
-                "-pix_fmt",
-                "yuv420p",
-                str(mp4_path),
-            ]
-        )
+        cmd = self._build_convert_cmd(webm_path, mp4_path, trim_start)
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"FFmpeg conversion failed: {result.stderr}")
+
+    # fmt: off
+    def _build_convert_cmd(self, webm_path: Path, mp4_path: Path, trim_start: float) -> list:
+        """Build FFmpeg conversion command."""
+        trim_args = ["-ss", f"{trim_start:.2f}"] if trim_start > 0 else []
+        return ["ffmpeg", "-y", *trim_args, "-i", str(webm_path), "-c:v", "libx264",
+                "-preset", "fast", "-crf", "22", "-pix_fmt", "yuv420p", str(mp4_path)]
+    # fmt: on
 
     async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
         """Record terminal session using ttyd and Playwright."""

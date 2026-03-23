@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demorec Demo - Agent Workflow Tools</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { text-align: center; color: #00d4ff; margin-bottom: 0.5rem; }
+        .subtitle { text-align: center; color: #888; margin-bottom: 2rem; }
+        .video-container {
+            background: #0d1117;
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        video { width: 100%; border-radius: 8px; }
+        .info { background: #1e293b; border-radius: 8px; padding: 1.5rem; margin-top: 2rem; }
+        .info h2 { color: #00d4ff; margin-bottom: 1rem; font-size: 1.2rem; }
+        .info ul { list-style: none; }
+        .info li { padding: 0.5rem 0; border-bottom: 1px solid #334155; }
+        .info li:last-child { border-bottom: none; }
+        .check { color: #22c55e; margin-right: 0.5rem; }
+        code { background: #334155; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.9rem; }
+        .stats { display: flex; justify-content: center; gap: 2rem; margin-top: 1.5rem; flex-wrap: wrap; }
+        .stat { text-align: center; }
+        .stat-value { font-size: 1.5rem; font-weight: bold; color: #00d4ff; }
+        .stat-label { font-size: 0.8rem; color: #888; }
+        .section { margin-top: 2rem; }
+        .section h2 { color: #00d4ff; margin-bottom: 1rem; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #334155; }
+        th { color: #00d4ff; font-weight: 600; }
+        .badge { 
+            display: inline-block; 
+            padding: 0.25rem 0.5rem; 
+            border-radius: 4px; 
+            font-size: 0.8rem;
+            background: #22c55e20;
+            color: #22c55e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Demorec Demo</h1>
+        <p class="subtitle">Agent Workflow Tools for Vim-Based Code Review Demos</p>
+
+        <div class="video-container">
+            <video controls autoplay muted loop>
+                <source src="https://github.com/jpshackelford/demorec/raw/feat/agent-workflow-tools-v2/.pr/demo_video.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+
+        <div class="info">
+            <h2>What This Demonstrates</h2>
+            <ul>
+                <li><span class="check">✓</span> Terminal mode with <code>@terminal:rows 30</code> directive</li>
+                <li><span class="check">✓</span> VHS-style terminal sizing via <code>term.fit()</code></li>
+                <li><span class="check">✓</span> Vim primitives: <code>Open</code>, <code>Highlight</code>, <code>Close</code></li>
+                <li><span class="check">✓</span> Automatic narration with <code>edge-tts</code></li>
+                <li><span class="check">✓</span> SRT subtitle generation</li>
+                <li><span class="check">✓</span> Clean video start (setup frames trimmed)</li>
+                <li><span class="check">✓</span> Timed audio mixing at correct timestamps</li>
+            </ul>
+            <div class="stats">
+                <div class="stat"><div class="stat-value">54s</div><div class="stat-label">Video Length</div></div>
+                <div class="stat"><div class="stat-value">30</div><div class="stat-label">Terminal Rows</div></div>
+                <div class="stat"><div class="stat-value">4</div><div class="stat-label">Highlights</div></div>
+            </div>
+        </div>
+
+        <div class="section info">
+            <h2>New CLI Commands</h2>
+            <table>
+                <tr><th>Command</th><th>Purpose</th></tr>
+                <tr><td><code>demorec stage</code></td><td>Calculate optimal vim commands for displaying specific line ranges</td></tr>
+                <tr><td><code>demorec checkpoints</code></td><td>Analyze script to detect natural checkpoint locations</td></tr>
+                <tr><td><code>demorec preview</code></td><td>Run through script and verify checkpoints without recording</td></tr>
+            </table>
+        </div>
+
+        <div class="section info">
+            <h2>High-Level Vim Primitives</h2>
+            <table>
+                <tr><th>Command</th><th>Purpose</th></tr>
+                <tr><td><code>Open "file.py"</code></td><td>Open file in vim with line numbers enabled</td></tr>
+                <tr><td><code>Highlight "10-20"</code></td><td>Navigate to lines and select with visual mode</td></tr>
+                <tr><td><code>Goto 50</code></td><td>Jump to line 50 with centering</td></tr>
+                <tr><td><code>Close</code></td><td>Exit vim cleanly</td></tr>
+            </table>
+        </div>
+
+        <div class="section info">
+            <h2>Terminal Sizing</h2>
+            <ul>
+                <li><span class="check">✓</span> <code>@terminal:rows N</code> - Set explicit row count (10-100)</li>
+                <li><span class="check">✓</span> <code>@terminal:size large|medium|small|tiny</code> - Preset sizes</li>
+                <li><span class="check">✓</span> Automatic font scaling to achieve target rows</li>
+                <li><span class="check">✓</span> VHS-style <code>term.fit()</code> for PTY sync</li>
+            </ul>
+        </div>
+
+        <p style="text-align: center; margin-top: 2rem; color: #666;">
+            <a href="https://github.com/jpshackelford/demorec/compare/feat/agent-workflow-tools-v2" style="color: #00d4ff;">View PR</a>
+            &nbsp;|&nbsp;
+            <a href="https://github.com/jpshackelford/demorec/raw/feat/agent-workflow-tools-v2/.pr/demo_video.mp4" style="color: #00d4ff;">Download Video</a>
+        </p>
+    </div>
+</body>
+</html>

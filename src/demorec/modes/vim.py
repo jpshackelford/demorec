@@ -110,70 +110,58 @@ def generate_open_commands(file_path: str, state: VimState) -> list[tuple[str, f
 def generate_highlight_commands(
     line_range: str, state: VimState, centering: str = "auto"
 ) -> list[tuple[str, float]]:
-    """Generate vim commands to highlight a range of lines.
-
-    Args:
-        line_range: Line range like "6-8" or "27-35"
-        state: VimState with current position and terminal info
-        centering: How to center the selection:
-            - "auto": Automatically choose best centering
-            - "top": Use zt (selection at top)
-            - "center": Use zz (selection centered)
-            - "bottom": Use zb (selection at bottom)
-
-    Returns:
-        List of (keys_to_type, delay_after) tuples
-    """
-    # Parse line range
-    if "-" in line_range:
-        start_line, end_line = map(int, line_range.split("-"))
-    else:
-        start_line = end_line = int(line_range)
-
-    num_lines = end_line - start_line + 1
+    """Generate vim commands to highlight a range of lines."""
+    start_line, end_line = _parse_line_range(line_range)
     commands = []
 
-    # Exit visual mode if we're in it
     if state.in_visual_mode:
         commands.append(("ESCAPE", 0.2))
         state.in_visual_mode = False
 
-    # Calculate the best line to jump to for centering
-    # We want the selection visible in the viewport
-    available_rows = state.terminal_rows - 2  # Account for status line + some margin
+    commands.extend(_centering_commands(start_line, end_line, state.terminal_rows, centering))
+    commands.extend(_visual_select_commands(start_line, end_line))
+
+    state.in_visual_mode = True
+    state.current_line = end_line
+    return commands
+
+
+def _parse_line_range(line_range: str) -> tuple[int, int]:
+    """Parse line range like '6-8' or '27' into (start, end)."""
+    if "-" in line_range:
+        start, end = map(int, line_range.split("-"))
+        return start, end
+    line = int(line_range)
+    return line, line
+
+
+def _centering_commands(
+    start_line: int, end_line: int, terminal_rows: int, centering: str
+) -> list[tuple[str, float]]:
+    """Generate commands to position the selection in viewport."""
+    num_lines = end_line - start_line + 1
+    available_rows = terminal_rows - 2
 
     if centering == "auto":
         if num_lines <= available_rows // 2:
-            # Small selection - center it
             center_line = (start_line + end_line) // 2
-            commands.append((f"{center_line}G", 0.2))
-            commands.append(("zz", 0.3))  # Center this line
-        else:
-            # Large selection - put start at top
-            commands.append((f"{start_line}G", 0.2))
-            commands.append(("zt", 0.3))  # Scroll to top
+            return [(f"{center_line}G", 0.2), ("zz", 0.3)]
+        return [(f"{start_line}G", 0.2), ("zt", 0.3)]
     elif centering == "top":
-        commands.append((f"{start_line}G", 0.2))
-        commands.append(("zt", 0.3))
+        return [(f"{start_line}G", 0.2), ("zt", 0.3)]
     elif centering == "center":
         center_line = (start_line + end_line) // 2
-        commands.append((f"{center_line}G", 0.2))
-        commands.append(("zz", 0.3))
+        return [(f"{center_line}G", 0.2), ("zz", 0.3)]
     elif centering == "bottom":
-        commands.append((f"{end_line}G", 0.2))
-        commands.append(("zb", 0.3))
+        return [(f"{end_line}G", 0.2), ("zb", 0.3)]
+    return []
 
-    # Start visual line mode from the start of selection
-    commands.append((f"{start_line}G", 0.2))
-    commands.append(("V", 0.2))  # Visual line mode
-    state.in_visual_mode = True
 
-    # Extend to end of selection (if more than one line)
+def _visual_select_commands(start_line: int, end_line: int) -> list[tuple[str, float]]:
+    """Generate visual selection commands."""
+    commands = [(f"{start_line}G", 0.2), ("V", 0.2)]
     if end_line > start_line:
         commands.append((f"{end_line}G", 0.3))
-
-    state.current_line = end_line
-
     return commands
 
 

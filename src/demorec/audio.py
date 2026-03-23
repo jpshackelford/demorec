@@ -83,30 +83,27 @@ def overlay_audio(video: Path, audio: Path, output: Path):
 
 
 def mix_audio_timed(video_path: Path, narrations: list, output: Path):
-    """Mix narration audio with video at correct timestamps.
-
-    Args:
-        video_path: Input video file
-        narrations: List of objects with audio_path, start_time, duration
-        output: Output video file path
-    """
+    """Mix narration audio with video at correct timestamps."""
     if not narrations:
         shutil.copy(video_path, output)
         return
 
-    video_duration = get_duration(video_path)
-    filter_complex = _build_audio_filter(narrations)
+    cmd = _build_mix_command(video_path, narrations, output)
+    run_ffmpeg(cmd, "Audio mixing failed")
 
+
+def _build_mix_command(video_path: Path, narrations: list, output: Path) -> list[str]:
+    """Build FFmpeg command for audio mixing."""
     inputs = ["-i", str(video_path)]
     for n in narrations:
         inputs.extend(["-i", str(n.audio_path)])
 
-    cmd = [
+    return [
         "ffmpeg",
         "-y",
         *inputs,
         "-filter_complex",
-        filter_complex,
+        _build_audio_filter(narrations),
         "-map",
         "0:v",
         "-map",
@@ -116,10 +113,9 @@ def mix_audio_timed(video_path: Path, narrations: list, output: Path):
         "-c:a",
         "aac",
         "-t",
-        str(video_duration),
+        str(get_duration(video_path)),
         str(output),
     ]
-    run_ffmpeg(cmd, "Audio mixing failed")
 
 
 def _build_audio_filter(narrations: list) -> str:

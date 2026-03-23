@@ -156,30 +156,27 @@ def _scroll_direction(block: Block, visible_rows: int) -> tuple[StageDirection, 
 def format_directions_text(directions: list[StageDirection], rows: int) -> str:
     """Format stage directions as human-readable text."""
     lines = [f"Stage Directions for {rows}-row terminal:", ""]
-
     for i, d in enumerate(directions, 1):
-        lines.append(f"Block {i}: lines {d.block.start}-{d.block.end} ({d.block.size} lines)")
-
-        if d.needs_scroll:
-            vis_start, vis_end = d.visible_range
-            lines.append(
-                f"  Scroll: {d.scroll_to}G{d.scroll_method} → shows lines {vis_start}-{vis_end}"
-            )
-        else:
-            vis_start, vis_end = d.visible_range
-            lines.append(f"  Position: visible in current view (lines {vis_start}-{vis_end})")
-
-        lines.append("  Commands:")
-        for cmd in d.commands:
-            lines.append(f'    Type "{cmd}"')
-
-        if d.notes:
-            for note in d.notes:
-                lines.append(f"  Note: {note}")
-
-        lines.append("")
-
+        lines.extend(_format_direction_text(i, d))
     return "\n".join(lines)
+
+
+def _format_direction_text(index: int, d: StageDirection) -> list[str]:
+    """Format a single direction as text lines."""
+    lines = [f"Block {index}: lines {d.block.start}-{d.block.end} ({d.block.size} lines)"]
+    vis_start, vis_end = d.visible_range
+
+    if d.needs_scroll:
+        scroll_cmd = f"{d.scroll_to}G{d.scroll_method}"
+        lines.append(f"  Scroll: {scroll_cmd} → shows lines {vis_start}-{vis_end}")
+    else:
+        lines.append(f"  Position: visible in current view (lines {vis_start}-{vis_end})")
+
+    lines.append("  Commands:")
+    lines.extend(f'    Type "{cmd}"' for cmd in d.commands)
+    lines.extend(f"  Note: {note}" for note in (d.notes or []))
+    lines.append("")
+    return lines
 
 
 def format_directions_json(directions: list[StageDirection], rows: int) -> str:

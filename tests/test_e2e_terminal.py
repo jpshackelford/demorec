@@ -1,16 +1,20 @@
 """End-to-end tests for terminal mode, especially rows/resize behavior.
 
-These tests spawn real subprocesses and have long timeouts.
+These tests use Click's CliRunner to invoke the CLI directly, allowing
+coverage to be collected. They require external dependencies (ttyd, vim, ffmpeg).
+
 Run with: pytest -m e2e
 Skip with: pytest -m "not e2e"
 """
 
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
+
+from demorec.cli import main
 
 # Check if required dependencies are available
 HAS_TTYD = shutil.which("ttyd") is not None
@@ -37,32 +41,28 @@ pytestmark = [
 
 
 def run_demorec(script_content: str, output_name: str = "test_output.mp4"):
-    """Helper to run demorec with a script."""
-    with tempfile.TemporaryDirectory() as tmpdir:
+    """Helper to run demorec with a script using CliRunner for coverage tracking."""
+    runner = CliRunner()
+    with runner.isolated_filesystem() as tmpdir:
         script_path = Path(tmpdir) / "test.demorec"
         output_path = Path(tmpdir) / output_name
-        
+
         # Update script to use temp output path
         script_content = script_content.replace(
-            f"Output {output_name}", 
-            f"Output {output_path}"
+            f"Output {output_name}",
+            f"Output {output_path}",
         )
         script_path.write_text(script_content)
-        
-        result = subprocess.run(
-            ["demorec", "record", str(script_path)],
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        
+
+        result = runner.invoke(main, ["record", str(script_path)], catch_exceptions=False)
+
         return {
-            "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
+            "returncode": result.exit_code,
+            "stdout": result.output,
+            "stderr": "",  # CliRunner captures all output in result.output
             "output_exists": output_path.exists(),
             "output_size": output_path.stat().st_size if output_path.exists() else 0,
-            "output_path": output_path
+            "output_path": output_path,
         }
 
 

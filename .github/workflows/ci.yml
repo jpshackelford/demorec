@@ -68,8 +68,8 @@ jobs:
           sudo mv /tmp/ttyd /usr/local/bin/ttyd
           ttyd --version
 
-      - name: Install vim for vim primitives tests
-        run: sudo apt-get update && sudo apt-get install -y vim
+      - name: Install vim and ffmpeg for tests
+        run: sudo apt-get update && sudo apt-get install -y vim ffmpeg
 
       - name: Run tests with coverage
         run: |

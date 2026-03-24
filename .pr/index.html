@@ -23,6 +23,19 @@
             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
         video { width: 100%; border-radius: 8px; }
+        video::cue {
+            background-color: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            font-size: 1.1rem;
+            line-height: 1.4;
+        }
+        .cc-note { 
+            text-align: center; 
+            color: #888; 
+            font-size: 0.85rem; 
+            margin-top: 0.75rem; 
+        }
+        .cc-note code { background: #334155; padding: 0.15rem 0.4rem; border-radius: 3px; }
         .info { background: #1e293b; border-radius: 8px; padding: 1.5rem; margin-top: 2rem; }
         .info h2 { color: #00d4ff; margin-bottom: 1rem; font-size: 1.2rem; }
         .info ul { list-style: none; }
@@ -55,10 +68,12 @@
         <p class="subtitle">Agent Workflow Tools for Vim-Based Code Review Demos</p>
 
         <div class="video-container">
-            <video controls autoplay muted loop>
+            <video id="demo-video" controls autoplay muted loop crossorigin="anonymous">
                 <source src="https://github.com/jpshackelford/demorec/raw/feat/agent-workflow-tools-v2/.pr/demo_video.mp4" type="video/mp4">
+                <track kind="captions" src="https://raw.githubusercontent.com/jpshackelford/demorec/feat/agent-workflow-tools-v2/.pr/demo_video.vtt" srclang="en" label="English" default>
                 Your browser does not support the video tag.
             </video>
+            <p class="cc-note">💬 Closed captions available — click <code>CC</code> in the video controls</p>
         </div>
 
         <div class="info">

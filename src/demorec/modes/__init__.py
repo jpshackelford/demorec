@@ -19,12 +19,18 @@ def convert_webm_to_mp4(webm_path: Path, mp4_path: Path):
 def _build_webm_convert_cmd(webm_path: Path, mp4_path: Path) -> list[str]:  # length-ok
     """Build FFmpeg command for webm to mp4 conversion."""
     return [
-        "ffmpeg", "-y",
-        "-i", str(webm_path),
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "22",
-        "-pix_fmt", "yuv420p",
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(webm_path),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "22",
+        "-pix_fmt",
+        "yuv420p",
         str(mp4_path),
     ]
 

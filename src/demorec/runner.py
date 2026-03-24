@@ -206,10 +206,16 @@ class Runner:
     def _build_segment_concat_cmd(self, concat_file: Path, output: Path) -> list[str]:  # length-ok
         """Build FFmpeg segment concat command."""
         return [
-            "ffmpeg", "-y",
-            "-f", "concat", "-safe", "0",
-            "-i", str(concat_file),
-            "-c", "copy",
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_file),
+            "-c",
+            "copy",
             str(output),
         ]
 

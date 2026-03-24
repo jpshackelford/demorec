@@ -204,13 +204,19 @@ class TerminalRecorder(CommandExecutorMixin):
         """Build FFmpeg conversion command."""
         trim_args = ["-ss", f"{trim_start:.2f}"] if trim_start > 0 else []
         return [
-            "ffmpeg", "-y",
+            "ffmpeg",
+            "-y",
             *trim_args,
-            "-i", str(webm_path),
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "22",
-            "-pix_fmt", "yuv420p",
+            "-i",
+            str(webm_path),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "22",
+            "-pix_fmt",
+            "yuv420p",
             str(mp4_path),
         ]
 

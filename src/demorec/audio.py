@@ -54,10 +54,16 @@ def concat_audio_files(audio_files: list[Path], output: Path, temp_dir: Path) ->
 def _build_concat_cmd(concat_file: Path, output: Path) -> list[str]:  # length-ok
     """Build FFmpeg concat command."""
     return [
-        "ffmpeg", "-y",
-        "-f", "concat", "-safe", "0",
-        "-i", str(concat_file),
-        "-c", "copy",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_file),
+        "-c",
+        "copy",
         str(output),
     ]
 
@@ -71,11 +77,16 @@ def overlay_audio(video: Path, audio: Path, output: Path):
 def _build_overlay_cmd(video: Path, audio: Path, output: Path) -> list[str]:  # length-ok
     """Build FFmpeg overlay command."""
     return [
-        "ffmpeg", "-y",
-        "-i", str(video),
-        "-i", str(audio),
-        "-c:v", "copy",
-        "-c:a", "aac",
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video),
+        "-i",
+        str(audio),
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
         "-shortest",
         str(output),
     ]
@@ -96,14 +107,21 @@ def _build_mix_command(video_path: Path, narrations: list, output: Path) -> list
     inputs = _build_input_args(video_path, narrations)
     duration = str(get_duration(video_path))
     return [
-        "ffmpeg", "-y",
+        "ffmpeg",
+        "-y",
         *inputs,
-        "-filter_complex", _build_audio_filter(narrations),
-        "-map", "0:v",
-        "-map", "[aout]",
-        "-c:v", "copy",
-        "-c:a", "aac",
-        "-t", duration,
+        "-filter_complex",
+        _build_audio_filter(narrations),
+        "-map",
+        "0:v",
+        "-map",
+        "[aout]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-t",
+        duration,
         str(output),
     ]
 

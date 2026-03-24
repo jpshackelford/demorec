@@ -88,11 +88,16 @@ def get_complexity_data() -> dict[str, tuple[str, int]]:
         return {}
 
 
+FUNCTION_LENGTH_WARN = 11
+FUNCTION_LENGTH_ERROR = 25
+
+
 def get_function_length_data() -> dict[str, list[tuple[str, int]]]:
     """Get functions exceeding length thresholds."""
-    # Run our function length checker
+    # Run our function length checker with explicit thresholds
     _, stdout, _ = run_command(
-        ["python", "scripts/check_function_length.py", "src/", "--all", "--json"]
+        ["python", "scripts/check_function_length.py", "src/", "--all", "--json",
+         "--warn", str(FUNCTION_LENGTH_WARN), "--error", str(FUNCTION_LENGTH_ERROR)]
     )
     try:
         data = json.loads(stdout)

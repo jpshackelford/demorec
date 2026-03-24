@@ -2,8 +2,8 @@
 """Check function/method length in Python files.
 
 Reports functions with two severity levels:
-- WARNING: functions > warn threshold (default: 11 lines)
-- ERROR: functions > error threshold (default: 25 lines)
+- WARNING: functions > warn threshold (default: 10 lines)
+- ERROR: functions > error threshold (default: 20 lines)
 
 Excludes from line count (not logic):
 - Blank lines
@@ -170,12 +170,12 @@ def main():
     )
     parser.add_argument("path", type=Path, help="Directory or file to check")
     parser.add_argument(
-        "--warn", "-w", type=int, default=11,
-        help="Warning threshold (default: 11 lines)"
+        "--warn", "-w", type=int, default=10,
+        help="Warning threshold (default: 10 lines)"
     )
     parser.add_argument(
-        "--error", "-e", type=int, default=25,
-        help="Error threshold - must fix (default: 25 lines)"
+        "--error", "-e", type=int, default=20,
+        help="Error threshold - must fix (default: 20 lines)"
     )
     parser.add_argument(
         "--all", "-a", action="store_true",

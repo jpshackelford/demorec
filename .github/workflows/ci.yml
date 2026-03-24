@@ -78,6 +78,7 @@ jobs:
           name: coverage-data
           path: .coverage
           if-no-files-found: warn
+          include-hidden-files: true
 
   complexity:
     name: Complexity

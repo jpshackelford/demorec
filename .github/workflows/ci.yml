@@ -61,10 +61,20 @@ jobs:
       - name: Install Playwright browsers
         run: playwright install --with-deps chromium
 
+      - name: Install ttyd for terminal recording
+        run: |
+          wget -qO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
+          chmod +x /tmp/ttyd
+          sudo mv /tmp/ttyd /usr/local/bin/ttyd
+          ttyd --version
+
+      - name: Install vim for vim primitives tests
+        run: sudo apt-get update && sudo apt-get install -y vim
+
       - name: Run tests with coverage
         run: |
           coverage run --source=src/demorec -m pytest tests/ -v
-          coverage report --show-missing || true
+          coverage report --show-missing
           ls -la .coverage* || true
 
       - name: Check per-file coverage thresholds

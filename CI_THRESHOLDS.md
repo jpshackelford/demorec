@@ -13,7 +13,7 @@ Gradually tighten these as the codebase improves.
 | **Complexity (modules)** | A (1-5) | A (1-5) | ✅ Enforced |
 | **Complexity (average)** | A (1-5) | A (1-5) | ✅ Enforced |
 | **Function Length (warn)** | 11 lines | 8 lines | 🔄 Relaxed |
-| **Function Length (error)** | 25 lines | 12 lines | 🔄 Relaxed |
+| **Function Length (error)** | 12 lines | 12 lines | ✅ Enforced |
 
 ## How to Tighten Thresholds
 
@@ -52,7 +52,7 @@ xenon --max-absolute C --max-modules A --max-average A src/demorec/
 
 Function length thresholds have been relaxed to accommodate larger feature additions:
 ```bash
-python scripts/check_function_length.py src/ --warn 11 --error 25
+python scripts/check_function_length.py src/ --warn 11 --error 12
 ```
 
 **Ultimate target** (not yet enforced):

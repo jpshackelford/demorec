@@ -89,7 +89,7 @@ def get_complexity_data() -> dict[str, tuple[str, int]]:
 
 
 FUNCTION_LENGTH_WARN = 11
-FUNCTION_LENGTH_ERROR = 25
+FUNCTION_LENGTH_ERROR = 12
 
 
 def get_function_length_data() -> dict[str, list[tuple[str, int]]]:

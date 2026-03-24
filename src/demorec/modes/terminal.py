@@ -327,34 +327,29 @@ class TerminalRecorder(CommandExecutorMixin):
             str(mp4_path),
         ]
 
-    async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
-        """Record terminal session using ttyd and Playwright.
-
-        If session_manager is provided, uses persistent sessions that preserve
-        terminal state across mode switches. Otherwise, creates a one-shot session.
-        """
-        self._apply_theme_from_segment(segment)
-
-        # Use persistent session if manager provided, otherwise create one-shot session
+    async def _setup_session(self) -> tuple[int, bool]:
+        """Set up terminal session and return (port, owns_session)."""
         if self.session_manager:
             session = self.session_manager.get_or_create(self.session_name)
-            port = session.port
-            await asyncio.sleep(0.3)  # Give session time if just started
-            owns_session = False
-        else:
-            port = find_free_port()
-            self._start_ttyd(port)
-            await asyncio.sleep(0.5)
-            owns_session = True
+            await asyncio.sleep(0.3)
+            return session.port, False
+        port = find_free_port()
+        self._start_ttyd(port)
+        await asyncio.sleep(0.5)
+        return port, True
 
+    async def _record_async(  # length-ok
+        self, segment: Segment, output: Path
+    ) -> dict[int, tuple[float, float]]:
+        """Record terminal session using ttyd and Playwright."""
+        self._apply_theme_from_segment(segment)
+        port, owns_session = await self._setup_session()
         try:
-            timestamps, setup_duration = await self._run_browser_session(segment, output, port)
+            timestamps, setup_dur = await self._run_browser_session(segment, output, port)
         finally:
-            # Only cleanup if we created the session (not using session_manager)
             if owns_session:
                 self._cleanup_ttyd()
-
-        self._finalize_video(output, trim_start=setup_duration)
+        self._finalize_video(output, trim_start=setup_dur)
         return timestamps
 
     async def _send_keys(self, page, text: str, delay: float = None):

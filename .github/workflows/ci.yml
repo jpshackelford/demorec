@@ -63,8 +63,9 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          coverage run -m pytest tests/ -v
-          coverage combine || true
+          coverage run --source=src/demorec -m pytest tests/ -v
+          coverage report --show-missing || true
+          ls -la .coverage* || true
 
       - name: Check per-file coverage thresholds
         run: python scripts/check_coverage.py

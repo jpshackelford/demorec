@@ -5,13 +5,42 @@ Run with: pytest -m e2e
 Skip with: pytest -m "not e2e"
 """
 
-import pytest
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
-# Mark all tests in this module as e2e and slow
-pytestmark = [pytest.mark.e2e, pytest.mark.slow]
+import pytest
+
+# Check if required dependencies are available
+HAS_TTYD = shutil.which("ttyd") is not None
+HAS_FFMPEG = shutil.which("ffmpeg") is not None
+
+# Check if playwright chromium is installed
+try:
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        # Try to launch chromium to verify it's installed
+        browser = p.chromium.launch()
+        browser.close()
+        HAS_PLAYWRIGHT = True
+except Exception:
+    HAS_PLAYWRIGHT = False
+
+# Mark all tests in this module as e2e and slow, and skip if dependencies missing
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.slow,
+    pytest.mark.skipif(
+        not HAS_FFMPEG,
+        reason="ffmpeg not installed - required for video encoding",
+    ),
+    pytest.mark.skipif(
+        not HAS_PLAYWRIGHT,
+        reason="playwright chromium not installed - run: playwright install chromium",
+    ),
+]
 
 
 def run_demorec(script_content: str, output_name: str = "test_output.mp4"):
@@ -96,9 +125,13 @@ Sleep 0.5s
         assert result["output_exists"], "Output video not created"
 
 
+@pytest.mark.skipif(
+    not HAS_TTYD,
+    reason="ttyd not installed - required for terminal recording in mode switching tests",
+)
 class TestModeSwitching:
     """Test mode switching between terminal and browser."""
-    
+
     def test_terminal_to_browser(self):
         """Test switching from terminal to browser mode."""
         script = '''Output test_output.mp4

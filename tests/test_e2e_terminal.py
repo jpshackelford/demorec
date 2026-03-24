@@ -5,14 +5,35 @@ Run with: pytest -m e2e
 Skip with: pytest -m "not e2e"
 """
 
-import pytest
+import shutil
 import subprocess
 import tempfile
-import re
 from pathlib import Path
 
-# Mark all tests in this module as e2e and slow
-pytestmark = [pytest.mark.e2e, pytest.mark.slow]
+import pytest
+
+# Check if required dependencies are available
+HAS_TTYD = shutil.which("ttyd") is not None
+HAS_VIM = shutil.which("vim") is not None
+HAS_FFMPEG = shutil.which("ffmpeg") is not None
+
+# Mark all tests in this module as e2e and slow, and skip if dependencies missing
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.slow,
+    pytest.mark.skipif(
+        not HAS_TTYD,
+        reason="ttyd not installed - required for terminal recording",
+    ),
+    pytest.mark.skipif(
+        not HAS_VIM,
+        reason="vim not installed - required for vim primitives",
+    ),
+    pytest.mark.skipif(
+        not HAS_FFMPEG,
+        reason="ffmpeg not installed - required for video encoding",
+    ),
+]
 
 
 def run_demorec(script_content: str, output_name: str = "test_output.mp4"):

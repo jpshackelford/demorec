@@ -57,7 +57,7 @@ Navigate "https://example.com"
 Sleep 1s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
         assert result["output_size"] > 0, "Output video is empty"
 
@@ -77,7 +77,7 @@ Scroll "down" 100
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
     def test_browser_wait(self):
@@ -92,7 +92,7 @@ Wait "h1"
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
 
@@ -115,7 +115,7 @@ Navigate "https://example.com"
 Sleep 1s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
         # Check for segment concatenation message
         assert "Concatenating segments" in result["stdout"], "Missing concatenation step"
@@ -136,7 +136,7 @@ Enter
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
     def test_roundtrip_terminal_browser_terminal(self):
@@ -160,7 +160,7 @@ Enter
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
         # Should have 3 segments
         assert "3 commands)" in result["stdout"] or "segment" in result["stdout"].lower()
@@ -182,7 +182,7 @@ Press "Escape"
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
 
     def test_screenshot_command(self):
         """Test Screenshot command."""
@@ -197,7 +197,7 @@ Screenshot "test.png"
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
 
     def test_hover_command(self):
         """Test Hover command."""
@@ -212,7 +212,7 @@ Hover "a"
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
 
 
 if __name__ == "__main__":

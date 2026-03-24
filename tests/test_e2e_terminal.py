@@ -60,7 +60,7 @@ Enter
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
         assert result["output_size"] > 0, "Output video is empty"
 
@@ -75,7 +75,7 @@ Run "ls -la"
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
     def test_terminal_clear(self):
@@ -92,7 +92,7 @@ Clear
 Sleep 0.3s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
 
@@ -112,7 +112,7 @@ Enter
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
     def test_terminal_rows_small(self):
@@ -128,7 +128,7 @@ Enter
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
     def test_terminal_rows_large(self):
@@ -144,7 +144,7 @@ Enter
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
     def test_terminal_rows_logs_actual_rows(self):
@@ -160,7 +160,7 @@ Enter
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         
         # Check stdout for row count info
         combined_output = result["stdout"] + result["stderr"]
@@ -187,7 +187,7 @@ Close
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
     def test_vim_highlight(self):
@@ -207,7 +207,7 @@ Close
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
     def test_vim_goto(self):
@@ -226,7 +226,7 @@ Close
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
 
@@ -278,7 +278,7 @@ Set Height 720
 Sleep 1s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
     def test_special_characters_in_type(self):
@@ -296,7 +296,7 @@ Enter
 Sleep 0.5s
 '''
         result = run_demorec(script)
-        assert result["returncode"] == 0, f"Failed: {result['stderr']}"
+        assert result["returncode"] == 0, f"Failed:\nstdout: {result['stdout']}\nstderr: {result['stderr']}"
         assert result["output_exists"], "Output video not created"
 
 

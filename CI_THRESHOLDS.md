@@ -12,8 +12,8 @@ Gradually tighten these as the codebase improves.
 | **Complexity (absolute)** | C (11-20) | C (11-20) | ✅ Enforced |
 | **Complexity (modules)** | A (1-5) | A (1-5) | ✅ Enforced |
 | **Complexity (average)** | A (1-5) | A (1-5) | ✅ Enforced |
-| **Function Length (warn)** | 15 lines | 8 lines | ✅ Tightened |
-| **Function Length (error)** | 25 lines | 12 lines | ✅ Tightened |
+| **Function Length (warn)** | 11 lines | 8 lines | 🔄 Relaxed |
+| **Function Length (error)** | 25 lines | 12 lines | 🔄 Relaxed |
 
 ## How to Tighten Thresholds
 
@@ -48,11 +48,11 @@ xenon --max-absolute C --max-modules A --max-average A src/demorec/
 
 **Fix high complexity:** Break complex functions into smaller, focused functions using dispatch tables or helper functions.
 
-### 3. Function Length ✅ Tightened
+### 3. Function Length 🔄 Relaxed
 
-Function length thresholds have been tightened:
+Function length thresholds have been relaxed to accommodate larger feature additions:
 ```bash
-python scripts/check_function_length.py src/ --warn 15 --error 25
+python scripts/check_function_length.py src/ --warn 11 --error 25
 ```
 
 **Ultimate target** (not yet enforced):

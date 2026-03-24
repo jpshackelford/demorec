@@ -23,25 +23,6 @@
             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
         video { width: 100%; border-radius: 8px; }
-        .captions-box {
-            position: absolute;
-            bottom: 60px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.85);
-            color: #fff;
-            padding: 8px 16px;
-            border-radius: 4px;
-            font-size: 1.1rem;
-            line-height: 1.4;
-            max-width: 80%;
-            text-align: center;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.15s;
-        }
-        .captions-box.visible { opacity: 1; }
-        .video-container { position: relative; }
         .info { background: #1e293b; border-radius: 8px; padding: 1.5rem; margin-top: 2rem; }
         .info h2 { color: #00d4ff; margin-bottom: 1rem; font-size: 1.2rem; }
         .info ul { list-style: none; }
@@ -74,11 +55,10 @@
         <p class="subtitle">Agent Workflow Tools for Vim-Based Code Review Demos</p>
 
         <div class="video-container">
-            <video id="demo-video" controls autoplay muted loop>
+            <video controls autoplay muted loop>
                 <source src="https://github.com/jpshackelford/demorec/raw/feat/agent-workflow-tools-v2/.pr/demo_video.mp4" type="video/mp4">
                 Your browser does not support the video tag.
             </video>
-            <div class="captions-box" id="captions-box"></div>
         </div>
 
         <div class="info">
@@ -138,31 +118,5 @@
             <a href="https://github.com/jpshackelford/demorec/blob/feat/agent-workflow-tools-v2/examples/video2_primitives.demorec" style="color: #00d4ff;">Demo Source</a>
         </p>
     </div>
-
-    <script>
-    // Embedded captions (from VTT)
-    const captions = [
-        { start: 3.973, end: 7.429, text: "Let's review this Python API client code." },
-        { start: 10.361, end: 17.513, text: "First, notice the imports. We're using dataclasses and typing for clean, type-safe code." },
-        { start: 20.736, end: 27.240, text: "Here's our User dataclass defining the structure with ID, name, email, and an active flag." },
-        { start: 30.460, end: 37.828, text: "The get_users method makes an authenticated GET request and converts the JSON response into User objects." },
-        { start: 41.046, end: 47.934, text: "Finally, the main function creates a client and fetches all users. Simple and clean!" },
-        { start: 50.428, end: 53.428, text: "That's a quick tour of the code structure." }
-    ];
-
-    const video = document.getElementById('demo-video');
-    const captionsBox = document.getElementById('captions-box');
-
-    video.addEventListener('timeupdate', () => {
-        const t = video.currentTime;
-        const caption = captions.find(c => t >= c.start && t <= c.end);
-        if (caption) {
-            captionsBox.textContent = caption.text;
-            captionsBox.classList.add('visible');
-        } else {
-            captionsBox.classList.remove('visible');
-        }
-    });
-    </script>
 </body>
 </html>

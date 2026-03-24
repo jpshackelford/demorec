@@ -38,6 +38,7 @@ class TerminalSession:
             return
         if not check_ttyd():
             from ..ttyd import find_ttyd
+
             find_ttyd()  # Raises with install instructions
         self._process = start_ttyd(self.port)
         self._started = True

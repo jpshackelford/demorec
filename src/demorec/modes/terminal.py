@@ -7,13 +7,12 @@ Supports persistent sessions across mode switches and multiple named sessions.
 """
 
 import asyncio
-import os
 import subprocess
 import time
 from pathlib import Path
 
 from ..parser import Command, Segment
-from ..ttyd import check_ttyd, find_free_port, stop_ttyd
+from ..ttyd import check_ttyd, find_free_port, start_ttyd, stop_ttyd
 from ..xterm import TerminalConfig, fit_to_rows, setup_terminal
 from . import CommandExecutorMixin
 from .terminal_commands import TERMINAL_COMMANDS, THEMES
@@ -37,32 +36,10 @@ class TerminalSession:
         """Start the ttyd process for this session."""
         if self._started:
             return
-
         if not check_ttyd():
-            raise RuntimeError(
-                "ttyd not found. Install with:\n"
-                "  wget -qO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64\n"  # noqa: E501
-                "  chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/ttyd"
-            )
-
-        # Build clean environment for terminal recording
-        env = os.environ.copy()
-        env["TERM"] = "xterm-256color"
-        env["PS1"] = "$ "
-        env["PROMPT_COMMAND"] = ""  # Clear any prompt hooks
-
-        # Remove any other prompt-related variables that might interfere
-        for key in list(env.keys()):
-            if "PROMPT" in key and key != "PROMPT_COMMAND":
-                del env[key]
-
-        # Start ttyd WITHOUT --once so it persists across reconnections
-        self._process = subprocess.Popen(
-            ["ttyd", "--port", str(self.port), "--writable", "/bin/bash", "--norc", "--noprofile"],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+            from ..ttyd import find_ttyd
+            find_ttyd()  # Raises with install instructions
+        self._process = start_ttyd(self.port)
         self._started = True
 
     def stop(self) -> None:

@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from ..parser import Command, Segment, parse_time
-from . import convert_webm_to_mp4
+from . import CommandExecutorMixin, convert_webm_to_mp4
 
 
 async def _cmd_navigate(page, cmd: Command):
@@ -104,38 +104,41 @@ BROWSER_COMMANDS = {
 }
 
 
-class BrowserRecorder:
+class BrowserRecorder(CommandExecutorMixin):
     """Records browser sessions using Playwright."""
 
     def __init__(self, width: int = 1280, height: int = 720, framerate: int = 30):
         self.width = width
         self.height = height
         self.framerate = framerate
+        self._timed_narrations = {}
 
-    def record(self, segment: Segment, output: Path):
-        """Record a browser segment to video."""
+    def record(self, segment: Segment, output: Path, timed_narrations: dict = None):
+        """Record a browser segment to video. Returns command timestamps."""
         output = output.absolute()
-        asyncio.run(self._record_async(segment, output))
+        self._timed_narrations = timed_narrations or {}
+        return asyncio.run(self._record_async(segment, output))
 
-    async def _record_async(self, segment: Segment, output: Path):
+    async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
         from playwright.async_api import async_playwright
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            context = await browser.new_context(
-                viewport={"width": self.width, "height": self.height},
-                record_video_dir=str(output.parent),
-                record_video_size={"width": self.width, "height": self.height},
-            )
-            page = await context.new_page()
-
-            for cmd in segment.commands:
-                await self._execute_command(page, cmd)
-
+            context, page = await self._create_browser_context(p, output)
+            timestamps = await self._execute_commands(page, segment)
             await context.close()
-            await browser.close()
 
         self._finalize_video(output)
+        return timestamps
+
+    async def _create_browser_context(self, playwright, output: Path):
+        """Create browser context with video recording."""
+        browser = await playwright.chromium.launch()
+        context = await browser.new_context(
+            viewport={"width": self.width, "height": self.height},
+            record_video_dir=str(output.parent),
+            record_video_size={"width": self.width, "height": self.height},
+        )
+        return context, await context.new_page()
 
     def _finalize_video(self, output: Path):
         """Find and convert the recorded video."""

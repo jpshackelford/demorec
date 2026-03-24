@@ -1,0 +1,32 @@
+1
+00:00:03,973 --> 00:00:07,429
+Let's review this Python API client code.
+
+2
+00:00:10,361 --> 00:00:17,513
+First, notice the imports. We're using
+dataclasses and typing for clean,
+type-safe code.
+
+3
+00:00:20,736 --> 00:00:27,240
+Here's our User dataclass defining the
+structure with ID, name, email, and an
+active flag.
+
+4
+00:00:30,460 --> 00:00:37,828
+The get_users method makes an
+authenticated GET request and converts the
+JSON response into User objects.
+
+5
+00:00:41,046 --> 00:00:47,934
+Finally, the main function creates a
+client and fetches all users. Simple and
+clean!
+
+6
+00:00:50,428 --> 00:00:53,428
+That's a quick tour of the code structure.
+

@@ -50,6 +50,6 @@ jobs:
         with:
           llm-model: litellm_proxy/claude-sonnet-4-5-20250929
           llm-base-url: https://llm-proxy.app.all-hands.dev
-          review-style: constructive
+          review-style: roasted
           llm-api-key: ${{ secrets.LLM_API_KEY }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

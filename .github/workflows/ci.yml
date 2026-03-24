@@ -61,10 +61,21 @@ jobs:
       - name: Install Playwright browsers
         run: playwright install --with-deps chromium
 
+      - name: Install ttyd for terminal recording
+        run: |
+          wget -qO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
+          chmod +x /tmp/ttyd
+          sudo mv /tmp/ttyd /usr/local/bin/ttyd
+          ttyd --version
+
+      - name: Install vim and ffmpeg for tests
+        run: sudo apt-get update && sudo apt-get install -y vim ffmpeg
+
       - name: Run tests with coverage
         run: |
-          coverage run -m pytest tests/ -v
-          coverage combine || true
+          coverage run --source=src/demorec -m pytest tests/ -v
+          coverage report --show-missing
+          ls -la .coverage* || true
 
       - name: Check per-file coverage thresholds
         run: python scripts/check_coverage.py
@@ -77,6 +88,7 @@ jobs:
           name: coverage-data
           path: .coverage
           if-no-files-found: warn
+          include-hidden-files: true
 
   complexity:
     name: Complexity
@@ -113,9 +125,9 @@ jobs:
           python-version: "3.12"
 
       - name: Check function length
-        # Thresholds: warn at 15 lines, error at 25 lines
+        # Thresholds: warn at 11 lines, error at 12 lines
         # Use "# length-ok" comment on def line to exempt specific functions
-        run: python scripts/check_function_length.py src/ --warn 15 --error 25
+        run: python scripts/check_function_length.py src/ --warn 11 --error 12
 
   quality-report:
     name: Quality Report

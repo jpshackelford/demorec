@@ -1,0 +1,14 @@
+# Test exact row count: 20 rows
+@terminal:rows 20
+
+Type "echo '=== Testing 20 Rows ==='"
+Enter
+Sleep 300ms
+
+Type "echo \"PTY: $(tput lines) rows x $(tput cols) cols\""
+Enter
+Sleep 500ms
+
+Type "stty size"
+Enter
+Sleep 500ms

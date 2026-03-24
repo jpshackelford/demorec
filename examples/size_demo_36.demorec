@@ -1,0 +1,14 @@
+# Demo at medium size (~36 rows)
+@terminal:size medium
+
+Type "echo '=== Medium Size Terminal ==='"
+Enter
+Sleep 300ms
+
+Type "tput lines; tput cols"
+Enter
+Sleep 500ms
+
+Type "for i in $(seq 1 45); do echo \"Line $i\"; done"
+Enter
+Sleep 1500ms

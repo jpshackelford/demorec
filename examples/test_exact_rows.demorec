@@ -1,0 +1,21 @@
+# Test exact row count: 30 rows
+# This tests if term.fit() can accurately achieve a specific row count
+
+@terminal:rows 30
+
+Type "echo '=== Testing Exact Row Count: 30 ==='"
+Enter
+Sleep 300ms
+
+Type "echo \"PTY reports: $(tput lines) rows\""
+Enter
+Sleep 500ms
+
+Type "stty size"
+Enter
+Sleep 500ms
+
+# Print 35 lines to verify scrolling behavior
+Type "for i in $(seq 1 35); do echo \"Line $i\"; done"
+Enter
+Sleep 1500ms

@@ -198,13 +198,21 @@ class TerminalRecorder(CommandExecutorMixin):
         if result.returncode != 0:
             raise RuntimeError(f"FFmpeg conversion failed: {result.stderr}")
 
-    # fmt: off
-    def _build_convert_cmd(self, webm_path: Path, mp4_path: Path, trim_start: float) -> list:
+    def _build_convert_cmd(  # length-ok
+        self, webm_path: Path, mp4_path: Path, trim_start: float
+    ) -> list:
         """Build FFmpeg conversion command."""
         trim_args = ["-ss", f"{trim_start:.2f}"] if trim_start > 0 else []
-        return ["ffmpeg", "-y", *trim_args, "-i", str(webm_path), "-c:v", "libx264",
-                "-preset", "fast", "-crf", "22", "-pix_fmt", "yuv420p", str(mp4_path)]
-    # fmt: on
+        return [
+            "ffmpeg", "-y",
+            *trim_args,
+            "-i", str(webm_path),
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "22",
+            "-pix_fmt", "yuv420p",
+            str(mp4_path),
+        ]
 
     async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
         """Record terminal session using ttyd and Playwright."""

@@ -51,12 +51,15 @@ def concat_audio_files(audio_files: list[Path], output: Path, temp_dir: Path) ->
     return output
 
 
-# fmt: off
-def _build_concat_cmd(concat_file: Path, output: Path) -> list[str]:
+def _build_concat_cmd(concat_file: Path, output: Path) -> list[str]:  # length-ok
     """Build FFmpeg concat command."""
-    return ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", str(concat_file), "-c", "copy", str(output)]
-# fmt: on
+    return [
+        "ffmpeg", "-y",
+        "-f", "concat", "-safe", "0",
+        "-i", str(concat_file),
+        "-c", "copy",
+        str(output),
+    ]
 
 
 def overlay_audio(video: Path, audio: Path, output: Path):
@@ -65,12 +68,17 @@ def overlay_audio(video: Path, audio: Path, output: Path):
     run_ffmpeg(cmd, "Audio overlay failed")
 
 
-# fmt: off
-def _build_overlay_cmd(video: Path, audio: Path, output: Path) -> list[str]:
+def _build_overlay_cmd(video: Path, audio: Path, output: Path) -> list[str]:  # length-ok
     """Build FFmpeg overlay command."""
-    return ["ffmpeg", "-y", "-i", str(video), "-i", str(audio),
-            "-c:v", "copy", "-c:a", "aac", "-shortest", str(output)]
-# fmt: on
+    return [
+        "ffmpeg", "-y",
+        "-i", str(video),
+        "-i", str(audio),
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-shortest",
+        str(output),
+    ]
 
 
 def mix_audio_timed(video_path: Path, narrations: list, output: Path):
@@ -83,14 +91,21 @@ def mix_audio_timed(video_path: Path, narrations: list, output: Path):
     run_ffmpeg(cmd, "Audio mixing failed")
 
 
-# fmt: off
-def _build_mix_command(video_path: Path, narrations: list, output: Path) -> list[str]:
+def _build_mix_command(video_path: Path, narrations: list, output: Path) -> list[str]:  # length-ok
     """Build FFmpeg command for audio mixing."""
     inputs = _build_input_args(video_path, narrations)
-    dur = str(get_duration(video_path))
-    return ["ffmpeg", "-y", *inputs, "-filter_complex", _build_audio_filter(narrations),
-            "-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-t", dur, str(output)]
-# fmt: on
+    duration = str(get_duration(video_path))
+    return [
+        "ffmpeg", "-y",
+        *inputs,
+        "-filter_complex", _build_audio_filter(narrations),
+        "-map", "0:v",
+        "-map", "[aout]",
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-t", duration,
+        str(output),
+    ]
 
 
 def _build_input_args(video_path: Path, narrations: list) -> list[str]:

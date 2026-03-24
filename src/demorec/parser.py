@@ -39,6 +39,9 @@ class Segment:
     # Terminal-specific settings
     size: Literal["large", "medium", "small", "tiny"] | None = None  # Display size preset
     rows: int | None = None  # Explicit row count (overrides size preset)
+    # Runtime field: populated by Runner with TimedNarration objects
+    # Type is dict[int, "TimedNarration"] but avoiding import to prevent circular deps
+    timed_narrations: dict = field(default_factory=dict)
 
 
 @dataclass

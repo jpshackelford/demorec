@@ -20,7 +20,6 @@ Example usage in .demorec:
 """
 
 import shutil
-import subprocess
 from dataclasses import dataclass
 
 
@@ -40,25 +39,6 @@ def check_vim_installed() -> bool:
     return shutil.which("vim") is not None
 
 
-def install_vim() -> bool:
-    """Install vim if not present. Returns True if vim is available after.
-
-    This runs BEFORE recording starts, so installation doesn't appear in video.
-    """
-    if check_vim_installed():
-        return True
-
-    # Try to install vim (Debian/Ubuntu)
-    try:
-        subprocess.run(["sudo", "apt-get", "update", "-qq"], capture_output=True, timeout=60)
-        result = subprocess.run(
-            ["sudo", "apt-get", "install", "-y", "-qq", "vim"], capture_output=True, timeout=120
-        )
-        return result.returncode == 0 and check_vim_installed()
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
-
-
 def preflight_check() -> list[str]:
     """Run preflight checks for vim primitives.
 
@@ -68,12 +48,12 @@ def preflight_check() -> list[str]:
     errors = []
 
     if not check_vim_installed():
-        # Try to install
-        if not install_vim():
-            errors.append(
-                "vim is not installed and automatic installation failed. "
-                "Please install vim manually: sudo apt-get install vim"
-            )
+        errors.append(
+            "vim is not installed. Please install vim manually:\n"
+            "  Ubuntu/Debian: sudo apt-get install vim\n"
+            "  macOS: brew install vim\n"
+            "  Fedora/RHEL: sudo dnf install vim"
+        )
 
     return errors
 

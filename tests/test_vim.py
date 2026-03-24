@@ -15,7 +15,6 @@ from demorec.modes.vim import (
     VimState,
     VimCommandExpander,
     check_vim_installed,
-    install_vim,
     preflight_check,
     generate_open_commands,
     generate_highlight_commands,
@@ -64,23 +63,6 @@ class TestCheckVimInstalled:
             assert check_vim_installed() is False
 
 
-class TestInstallVim:
-    """Test vim installation function."""
-
-    def test_returns_true_if_already_installed(self):
-        """Should return True immediately if vim is already installed."""
-        with patch("demorec.modes.vim.check_vim_installed", return_value=True):
-            assert install_vim() is True
-
-    def test_attempts_install_if_not_found(self):
-        """Should attempt apt-get install if vim not found."""
-        with patch("demorec.modes.vim.check_vim_installed", side_effect=[False, True]):
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0)
-                result = install_vim()
-                assert result is True
-
-
 class TestPreflightCheck:
     """Test preflight check function."""
 
@@ -93,10 +75,17 @@ class TestPreflightCheck:
     def test_returns_error_when_vim_unavailable(self):
         """Should return error message when vim is unavailable."""
         with patch("demorec.modes.vim.check_vim_installed", return_value=False):
-            with patch("demorec.modes.vim.install_vim", return_value=False):
-                errors = preflight_check()
-                assert len(errors) == 1
-                assert "vim is not installed" in errors[0]
+            errors = preflight_check()
+            assert len(errors) == 1
+            assert "vim is not installed" in errors[0]
+
+    def test_error_includes_install_instructions(self):
+        """Should include multi-platform install instructions."""
+        with patch("demorec.modes.vim.check_vim_installed", return_value=False):
+            errors = preflight_check()
+            assert "apt-get" in errors[0]  # Ubuntu/Debian
+            assert "brew" in errors[0]  # macOS
+            assert "dnf" in errors[0]  # Fedora/RHEL
 
 
 class TestParseLineRange:

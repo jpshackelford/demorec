@@ -166,13 +166,11 @@ class Runner:
 
     def _attach_to_segment(self, segment: Segment, cmd_idx: int, timed: "TimedNarration"):
         """Attach timed narration to segment for recorder."""
-        if not hasattr(segment, "timed_narrations"):
-            segment.timed_narrations = {}
         segment.timed_narrations[cmd_idx] = timed
 
     def _record_segment(self, segment: Segment, output: Path, time_offset: float = 0.0) -> float:
         """Record a single segment and return its duration."""
-        timed_narrations = getattr(segment, "timed_narrations", {})
+        timed_narrations = segment.timed_narrations
         recorder = self._create_recorder(segment)
         timestamps = recorder.record(segment, output, timed_narrations)
         self._update_narration_times(timed_narrations, timestamps, time_offset)
@@ -205,12 +203,15 @@ class Runner:
         cmd = self._build_segment_concat_cmd(concat_file, output)
         run_ffmpeg(cmd, "FFmpeg concat failed")
 
-    # fmt: off
-    def _build_segment_concat_cmd(self, concat_file: Path, output: Path) -> list[str]:
+    def _build_segment_concat_cmd(self, concat_file: Path, output: Path) -> list[str]:  # length-ok
         """Build FFmpeg segment concat command."""
-        return ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", str(concat_file), "-c", "copy", str(output)]
-    # fmt: on
+        return [
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", str(concat_file),
+            "-c", "copy",
+            str(output),
+        ]
 
     def cleanup(self):
         """Remove temporary files."""

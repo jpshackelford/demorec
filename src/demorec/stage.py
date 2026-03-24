@@ -2,10 +2,20 @@
 
 Calculates optimal vim commands for scrolling and highlighting code blocks
 based on terminal dimensions and desired line ranges.
+
+Also re-exports checkpoint functionality from .checkpoints for a unified API.
 """
 
 import json
 from dataclasses import dataclass
+
+# Re-export checkpoint functionality for unified API
+from .checkpoints import (
+    Checkpoint,
+    detect_checkpoints,
+    format_checkpoints_json,
+    format_checkpoints_text,
+)
 
 
 @dataclass
@@ -117,17 +127,23 @@ def _no_scroll_direction(block: Block, visible_range: tuple[int, int]) -> StageD
     )
 
 
-# fmt: off
-def _scroll_direction(block: Block, visible_rows: int) -> tuple[StageDirection, tuple[int, int]]:
+def _scroll_direction(  # length-ok
+    block: Block, visible_rows: int
+) -> tuple[StageDirection, tuple[int, int]]:
     """Create direction when scrolling is needed."""
     scroll_to, method, notes = _determine_scroll(block, visible_rows)
     new_view = calculate_visible_range(scroll_to, visible_rows, method)
     cmds = [f"{scroll_to}G{method}", f"{block.start}GV{block.end}G"]
     direction = StageDirection(
-        block=block, needs_scroll=True, scroll_to=scroll_to, scroll_method=method,
-        visible_range=new_view, commands=cmds, notes=notes)
+        block=block,
+        needs_scroll=True,
+        scroll_to=scroll_to,
+        scroll_method=method,
+        visible_range=new_view,
+        commands=cmds,
+        notes=notes,
+    )
     return direction, new_view
-# fmt: on
 
 
 def _determine_scroll(block: Block, visible_rows: int) -> tuple[int, str, list[str]]:
@@ -213,14 +229,6 @@ def format_directions_demorec(directions: list[StageDirection]) -> str:
 
     return "\n".join(lines)
 
-
-# Re-export checkpoint functionality for backwards compatibility
-from .checkpoints import (  # noqa: E402, F401
-    Checkpoint,
-    detect_checkpoints,
-    format_checkpoints_json,
-    format_checkpoints_text,
-)
 
 __all__ = [
     # Stage directions

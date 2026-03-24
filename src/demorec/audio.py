@@ -20,7 +20,8 @@ def write_concat_file(file_path: Path, files: list[Path]):
     """Write an FFmpeg concat file list."""
     with open(file_path, "w") as f:
         for item in files:
-            f.write(f"file '{item}'\n")
+            escaped = str(item).replace("'", "'\\''")
+            f.write(f"file '{escaped}'\n")
 
 
 def get_duration(media_path: Path) -> float:

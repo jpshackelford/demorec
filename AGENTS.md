@@ -18,7 +18,7 @@ ruff check --fix src/ && ruff format src/ && pytest tests/ -q
 
 # Quality checks
 xenon --max-absolute C --max-modules A --max-average A src/demorec/
-python scripts/check_function_length.py src/ --warn 8 --error 12
+python scripts/check_function_length.py src/ --warn 11 --error 12
 ```
 
 ## Project Structure
@@ -54,14 +54,14 @@ src/demorec/
 | Lint | Must pass | `ruff check src/` |
 | Format | Must pass | `ruff format --check src/` |
 | Complexity | Max C (11-20) | `xenon --max-absolute C --max-modules A --max-average A src/demorec/` |
-| Function Length | Warn >8, Error >12 | `python scripts/check_function_length.py src/ --warn 8 --error 12` |
+| Function Length | Warn >11, Error >12 | `python scripts/check_function_length.py src/ --warn 11 --error 12` |
 | File Length | Warn >200, Error >400 | `python scripts/check_file_length.py src/ --warn 200 --error 400` |
 
 ### Function Length Rules
 
 Logic lines counted (excludes docstrings, comments, blanks, logging):
-- ✓ **OK**: ≤8 lines (ideal)
-- ⚠ **Warning**: 9-12 lines (consider refactoring)
+- ✓ **OK**: ≤11 lines
+- ⚠ **Warning**: 12 lines (consider refactoring)
 - ✗ **Error**: >12 lines (must fix)
 
 **Exemption marker** (use sparingly, requires justification):

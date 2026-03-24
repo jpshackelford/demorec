@@ -9,10 +9,11 @@ from typing import Literal
 @dataclass
 class Command:
     """A single command in the script."""
+
     name: str
     args: list[str] = field(default_factory=list)
     line_num: int = 0
-    
+
     def __repr__(self):
         if self.args:
             return f"{self.name} {' '.join(repr(a) for a in self.args)}"
@@ -22,23 +23,32 @@ class Command:
 @dataclass
 class Narration:
     """A narration directive."""
+
     mode: Literal["before", "during", "after"]
     text: str
     line_num: int = 0
 
 
-@dataclass 
+@dataclass
 class Segment:
     """A segment of commands in a single mode."""
+
     mode: Literal["terminal", "browser"]
     session_name: str = "default"  # For terminal sessions (e.g., terminal:server)
     commands: list[Command] = field(default_factory=list)
     narrations: dict[int, Narration] = field(default_factory=dict)  # command_index -> narration
+    # Terminal-specific settings
+    size: Literal["large", "medium", "small", "tiny"] | None = None  # Display size preset
+    rows: int | None = None  # Explicit row count (overrides size preset)
+    # Runtime field: populated by Runner with TimedNarration objects
+    # Type is dict[int, "TimedNarration"] but avoiding import to prevent circular deps
+    timed_narrations: dict = field(default_factory=dict)
 
 
 @dataclass
 class Plan:
     """The complete execution plan for a script."""
+
     output: Path = field(default_factory=lambda: Path("output.mp4"))
     width: int = 1280
     height: int = 720
@@ -75,143 +85,237 @@ def parse_string(s: str) -> str:
     return s
 
 
+class _Tokenizer:
+    """Stateful tokenizer for parsing lines with quoted strings."""
+
+    def __init__(self, line: str):
+        self.line = line
+        self.tokens: list[str] = []
+        self.current = ""
+        self.in_quotes = False
+        self.quote_char: str | None = None
+        self.i = 0
+
+    def _handle_escape(self) -> bool:
+        """Handle escape sequence. Returns True if processed."""
+        if self.line[self.i] == "\\" and self.i + 1 < len(self.line):
+            self.current += self.line[self.i : self.i + 2]
+            self.i += 2
+            return True
+        return False
+
+    def _close_quote(self):
+        """Close current quoted string."""
+        self.current += self.line[self.i]
+        self.tokens.append(self.current)
+        self.current = ""
+        self.in_quotes = False
+
+    def _open_quote(self, char: str):
+        """Start a new quoted string."""
+        if self.current:
+            self.tokens.append(self.current)
+        self.current = char
+        self.in_quotes = True
+        self.quote_char = char
+
+    def _flush_token(self):
+        """Flush current token if non-empty."""
+        if self.current:
+            self.tokens.append(self.current)
+            self.current = ""
+
+    def tokenize(self) -> list[str]:
+        """Tokenize the line and return list of tokens."""
+        while self.i < len(self.line):
+            self._process_char(self.line[self.i])
+            self.i += 1
+        self._flush_token()
+        return self.tokens
+
+    def _process_char(self, c: str):
+        """Process a single character."""
+        if self.in_quotes:
+            self._process_quoted_char(c)
+        elif c in ('"', "'"):
+            self._open_quote(c)
+        elif c.isspace():
+            self._flush_token()
+        else:
+            self.current += c
+
+    def _process_quoted_char(self, c: str):
+        """Process a character inside quotes."""
+        if self._handle_escape():
+            self.i -= 1  # Will be incremented by caller
+        elif c == self.quote_char:
+            self._close_quote()
+        else:
+            self.current += c
+
+
 def tokenize_line(line: str) -> list[str]:
     """Split a line into tokens, respecting quoted strings."""
-    tokens = []
-    current = ""
-    in_quotes = False
-    quote_char = None
-    
-    i = 0
-    while i < len(line):
-        c = line[i]
-        
-        if in_quotes:
-            if c == "\\" and i + 1 < len(line):
-                current += c + line[i + 1]
-                i += 2
-                continue
-            elif c == quote_char:
-                current += c
-                tokens.append(current)
-                current = ""
-                in_quotes = False
-            else:
-                current += c
-        else:
-            if c in ('"', "'"):
-                if current:
-                    tokens.append(current)
-                    current = ""
-                current = c
-                in_quotes = True
-                quote_char = c
-            elif c.isspace():
-                if current:
-                    tokens.append(current)
-                    current = ""
-            else:
-                current += c
-        i += 1
-    
-    if current:
-        tokens.append(current)
-    
-    return tokens
+    return _Tokenizer(line).tokenize()
+
+
+@dataclass
+class _ParseContext:
+    """Mutable parsing state."""
+
+    plan: Plan
+    current_segment: Segment | None = None
+    pending_narration: Narration | None = None
+
+
+def _parse_comment(line: str, line_num: int, ctx: _ParseContext) -> bool:
+    """Parse a comment line for directives. Returns True if line was handled."""
+    narrate_match = re.match(r"#\s*@narrate:(before|during|after)\s+(.+)", line)
+    if narrate_match:
+        mode = narrate_match.group(1)
+        text = parse_string(narrate_match.group(2).strip())
+        ctx.pending_narration = Narration(mode=mode, text=text, line_num=line_num)
+        return True
+
+    voice_match = re.match(r"#\s*@voice\s+(\S+)", line)
+    if voice_match:
+        ctx.plan.voice = voice_match.group(1)
+        return True
+
+    return True  # Regular comment - skip
+
+
+def _handle_set_directive(args: list[str], line_num: int, ctx: _ParseContext):
+    """Handle the Set directive for plan settings."""
+    if len(args) < 2:
+        return
+    key, val = args[0].lower(), args[1]
+    setters = {
+        "width": lambda: setattr(ctx.plan, "width", int(val)),
+        "height": lambda: setattr(ctx.plan, "height", int(val)),
+        "framerate": lambda: setattr(ctx.plan, "framerate", int(val)),
+    }
+    if key in setters:
+        setters[key]()
+    elif key == "theme" and ctx.current_segment:
+        ctx.current_segment.commands.append(Command("SetTheme", [val], line_num))
+
+
+def _handle_mode_switch(args: list[str], ctx: _ParseContext):
+    """Handle @mode directive to switch recording modes.
+
+    Supports optional session names for terminal mode:
+    - @mode terminal -> default session
+    - @mode terminal:server -> named "server" session
+    - @mode browser -> browser mode (session_name ignored)
+    """
+    if not args:
+        return
+
+    mode_spec = args[0].lower()
+    # Parse optional session name: terminal:server -> mode=terminal, session=server
+    if ":" in mode_spec:
+        mode, session_name = mode_spec.split(":", 1)
+    else:
+        mode, session_name = mode_spec, "default"
+
+    if mode in ("terminal", "browser"):
+        ctx.current_segment = Segment(mode=mode, session_name=session_name)
+        ctx.plan.segments.append(ctx.current_segment)
+
+
+def _handle_terminal_directive(directive: str, args: list[str], ctx: _ParseContext) -> bool:
+    """Handle @terminal:size and @terminal:rows directives."""
+    if directive == "size" and args:
+        return _handle_size_directive(args[0].lower(), ctx)
+    if directive == "rows" and args:
+        return _handle_rows_directive(args[0], ctx)
+    return False
+
+
+def _handle_size_directive(size: str, ctx: _ParseContext) -> bool:
+    """Handle @terminal:size preset directive."""
+    if size not in ("large", "medium", "small", "tiny"):
+        return True
+    _set_terminal_attr(ctx, "size", size)
+    return True
+
+
+def _handle_rows_directive(rows_str: str, ctx: _ParseContext) -> bool:
+    """Handle @terminal:rows directive."""
+    try:
+        rows = int(rows_str)
+        if 10 <= rows <= 100:
+            _set_terminal_attr(ctx, "rows", rows)
+    except ValueError:
+        pass
+    return True
+
+
+def _set_terminal_attr(ctx: _ParseContext, attr: str, value):
+    """Set attribute on current terminal segment, creating one if needed."""
+    if ctx.current_segment and ctx.current_segment.mode == "terminal":
+        setattr(ctx.current_segment, attr, value)
+    elif ctx.current_segment is None:
+        ctx.current_segment = Segment(mode="terminal", **{attr: value})
+        ctx.plan.segments.append(ctx.current_segment)
+
+
+def _ensure_segment(ctx: _ParseContext):
+    """Ensure there's an active segment, defaulting to terminal."""
+    if ctx.current_segment is None:
+        ctx.current_segment = Segment(mode="terminal")
+        ctx.plan.segments.append(ctx.current_segment)
+
+
+def _add_command(name: str, args: list[str], line_num: int, ctx: _ParseContext):
+    """Add a command to the current segment."""
+    _ensure_segment(ctx)
+    cmd = Command(name=name, args=args, line_num=line_num)
+    cmd_index = len(ctx.current_segment.commands)
+    ctx.current_segment.commands.append(cmd)
+
+    if ctx.pending_narration:
+        ctx.current_segment.narrations[cmd_index] = ctx.pending_narration
+        ctx.pending_narration = None
 
 
 def parse_script(path: Path) -> Plan:
     """Parse a .demorec script file into an execution plan."""
-    plan = Plan()
-    current_segment: Segment | None = None
-    pending_narration: Narration | None = None
-    
+    ctx = _ParseContext(plan=Plan())
+
     with open(path) as f:
-        lines = f.readlines()
-    
-    for line_num, line in enumerate(lines, 1):
-        line = line.strip()
-        
-        # Skip empty lines
-        if not line:
-            continue
-        
-        # Handle narration comments: # @narrate:before "text"
-        if line.startswith("#"):
-            narrate_match = re.match(r"#\s*@narrate:(before|during|after)\s+(.+)", line)
-            if narrate_match:
-                mode = narrate_match.group(1)
-                text = parse_string(narrate_match.group(2).strip())
-                pending_narration = Narration(mode=mode, text=text, line_num=line_num)
-                continue
-            
-            # Handle voice directive: # @voice eleven:rachel
-            voice_match = re.match(r"#\s*@voice\s+(\S+)", line)
-            if voice_match:
-                plan.voice = voice_match.group(1)
-                continue
-            
-            # Regular comment - skip
-            continue
-        
-        # Tokenize the line
-        tokens = tokenize_line(line)
-        if not tokens:
-            continue
-        
-        cmd_name = tokens[0]
-        cmd_args = [parse_string(t) for t in tokens[1:]]
-        
-        # Handle global directives
-        if cmd_name == "Output":
-            if cmd_args:
-                plan.output = Path(cmd_args[0])
-            continue
-        
-        if cmd_name == "Set":
-            if len(cmd_args) >= 2:
-                key = cmd_args[0].lower()
-                val = cmd_args[1]
-                if key == "width":
-                    plan.width = int(val)
-                elif key == "height":
-                    plan.height = int(val)
-                elif key == "framerate":
-                    plan.framerate = int(val)
-                elif key == "theme" and current_segment:
-                    # Theme is segment-specific for terminal
-                    current_segment.commands.append(Command("SetTheme", [val], line_num))
-            continue
-        
-        # Handle mode switch
-        if cmd_name == "@mode":
-            if cmd_args:
-                mode_spec = cmd_args[0].lower()
-                # Parse optional session name: terminal:server -> mode=terminal, session=server
-                if ":" in mode_spec:
-                    mode, session_name = mode_spec.split(":", 1)
-                else:
-                    mode, session_name = mode_spec, "default"
-                
-                if mode in ("terminal", "browser"):
-                    current_segment = Segment(mode=mode, session_name=session_name)
-                    plan.segments.append(current_segment)
-            continue
-        
-        # All other commands require an active segment
-        if current_segment is None:
-            # Default to terminal mode
-            current_segment = Segment(mode="terminal")
-            plan.segments.append(current_segment)
-        
-        # Create the command
-        cmd = Command(name=cmd_name, args=cmd_args, line_num=line_num)
-        cmd_index = len(current_segment.commands)
-        current_segment.commands.append(cmd)
-        
-        # Attach pending narration to this command
-        if pending_narration:
-            current_segment.narrations[cmd_index] = pending_narration
-            pending_narration = None
-    
-    return plan
+        for line_num, line in enumerate(f, 1):
+            _parse_line(line.strip(), line_num, ctx)
+
+    return ctx.plan
+
+
+def _parse_line(line: str, line_num: int, ctx: _ParseContext):
+    """Parse a single line from the script."""
+    if not line:
+        return
+    if line.startswith("#"):
+        _parse_comment(line, line_num, ctx)
+        return
+
+    tokens = tokenize_line(line)
+    if tokens:
+        _dispatch_command(tokens, line_num, ctx)
+
+
+def _dispatch_command(tokens: list[str], line_num: int, ctx: _ParseContext):
+    """Dispatch a parsed command to the appropriate handler."""
+    cmd_name, cmd_args = tokens[0], [parse_string(t) for t in tokens[1:]]
+
+    if cmd_name == "Output" and cmd_args:
+        ctx.plan.output = Path(cmd_args[0])
+    elif cmd_name == "Set":
+        _handle_set_directive(cmd_args, line_num, ctx)
+    elif cmd_name == "@mode":
+        _handle_mode_switch(cmd_args, ctx)
+    elif cmd_name.startswith("@terminal:"):
+        directive = cmd_name.split(":", 1)[1].lower()
+        _handle_terminal_directive(directive, cmd_args, ctx)
+    else:
+        _add_command(cmd_name, cmd_args, line_num, ctx)

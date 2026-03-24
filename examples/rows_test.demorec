@@ -1,0 +1,21 @@
+# Test @terminal:rows directive
+# This should show exactly 24 rows with larger font
+
+@terminal:rows 24
+
+Type "echo 'Testing 24 rows'"
+Enter
+Sleep 500ms
+
+Type "tput lines"
+Enter
+Sleep 500ms
+
+Type "tput cols"
+Enter
+Sleep 500ms
+
+# Print lines to verify visible count
+Type "for i in $(seq 1 30); do echo \"Line $i\"; done"
+Enter
+Sleep 2s

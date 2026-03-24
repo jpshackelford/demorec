@@ -1,0 +1,63 @@
+name: Conventional Commits
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  lint-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title follows conventional commits
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Require conventional commit format for PR titles
+          # PR title becomes the merge commit message when squash merging
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          # Require a scope (optional)
+          requireScope: false
+          # Scopes allowed (optional - if empty, any scope is allowed)
+          scopes: |
+            cli
+            parser
+            runner
+            tts
+            browser
+            terminal
+            deps
+          # Ensure subject doesn't start with uppercase
+          subjectPattern: ^[a-z].+$
+          subjectPatternError: |
+            The subject "{subject}" should start with a lowercase letter.
+
+            Example: "feat: add browser recording support"
+          # Validate the entire PR title
+          validateSingleCommit: false
+          # Custom error message
+          headerPattern: ^(\w+)(?:\(([^)]+)\))?!?:\s(.+)$
+          headerPatternError: |
+            PR title must follow Conventional Commits format:
+
+            <type>[optional scope]: <description>
+
+            Examples:
+              feat: add browser recording support
+              fix(tts): correct audio sync timing
+              docs: update README with examples
+
+            Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+
+            Breaking changes: add "!" before colon (e.g., "feat!: remove deprecated API")

@@ -1,0 +1,48 @@
+# roundtrip.demorec - Test terminal → browser → terminal round-trip
+Output roundtrip.mp4
+Set Width 1280
+Set Height 720
+
+# ─────────────────────────────────────
+# TERMINAL 1: Start in terminal mode
+# ─────────────────────────────────────
+@mode terminal
+Set Theme "Dracula"
+
+Type "echo 'Step 1: Starting demo in terminal'"
+Enter
+Sleep 1s
+
+Type "curl -s https://httpbin.org/get | head -5"
+Enter
+Sleep 2s
+
+# ─────────────────────────────────────
+# BROWSER: Switch to browser mode
+# ─────────────────────────────────────
+@mode browser
+
+Navigate "https://example.com"
+Sleep 2s
+
+Highlight "h1"
+Sleep 1s
+
+Scroll "down" 100
+Sleep 1s
+
+Screenshot "roundtrip_browser.png"
+Sleep 1s
+
+# ─────────────────────────────────────
+# TERMINAL 2: Back to terminal mode
+# ─────────────────────────────────────
+@mode terminal
+
+Type "echo 'Step 3: Back in terminal!'"
+Enter
+Sleep 1s
+
+Type "echo 'Round-trip complete!'"
+Enter
+Sleep 2s

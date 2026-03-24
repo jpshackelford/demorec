@@ -1,0 +1,35 @@
+# terminal_to_browser.demorec - Test terminal to browser mode switching
+Output terminal_to_browser.mp4
+Set Width 1280
+Set Height 720
+
+# ─────────────────────────────────────
+# TERMINAL: Start in terminal mode
+# ─────────────────────────────────────
+@mode terminal
+Set Theme "Dracula"
+
+Type "echo 'Starting in terminal mode...'"
+Enter
+Sleep 1s
+
+Type "echo 'Now switching to browser!'"
+Enter
+Sleep 1s
+
+# ─────────────────────────────────────
+# BROWSER: Switch to browser mode
+# ─────────────────────────────────────
+@mode browser
+
+Navigate "https://example.com"
+Sleep 2s
+
+Highlight "h1"
+Sleep 1s
+
+Scroll "down" 100
+Sleep 1s
+
+Screenshot "from_terminal.png"
+Sleep 1s

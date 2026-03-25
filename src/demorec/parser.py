@@ -216,12 +216,21 @@ def _handle_mode_switch(args: list[str], ctx: _ParseContext):
     # Parse optional session name: terminal:server -> mode=terminal, session=server
     if ":" in mode_spec:
         mode, session_name = mode_spec.split(":", 1)
+        _validate_session_name(session_name)
     else:
         mode, session_name = mode_spec, "default"
 
     if mode in ("terminal", "browser"):
         ctx.current_segment = Segment(mode=mode, session_name=session_name)
         ctx.plan.segments.append(ctx.current_segment)
+
+
+def _validate_session_name(name: str) -> None:
+    """Validate session name is a valid identifier."""
+    if not name:
+        raise ValueError("Session name cannot be empty")
+    if not name.replace("_", "").replace("-", "").isalnum():
+        raise ValueError(f"Invalid session name: {name!r} (use alphanumeric, dash, underscore)")
 
 
 def _handle_terminal_directive(directive: str, args: list[str], ctx: _ParseContext) -> bool:

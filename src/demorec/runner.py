@@ -229,8 +229,10 @@ class Runner:
 
     def cleanup(self):
         """Remove temporary files and stop all terminal sessions."""
-        # Stop all persistent terminal sessions
-        self._session_manager.cleanup()
-        # Remove temporary files
-        if self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir)
+        # Stop terminal sessions first (must run even if temp cleanup fails)
+        try:
+            self._session_manager.cleanup()
+        finally:
+            # Remove temporary files
+            if self.temp_dir.exists():
+                shutil.rmtree(self.temp_dir)

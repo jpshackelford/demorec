@@ -369,6 +369,49 @@ class TestHandleModeSwitch:
         _handle_mode_switch(["invalid"], ctx)
         assert ctx.current_segment is None
 
+    def test_terminal_with_named_session(self):
+        """Should parse terminal:session_name syntax."""
+        ctx = _ParseContext(plan=Plan())
+        _handle_mode_switch(["terminal:server"], ctx)
+        assert ctx.current_segment.mode == "terminal"
+        assert ctx.current_segment.session_name == "server"
+
+    def test_terminal_with_default_session(self):
+        """Should use 'default' session when not specified."""
+        ctx = _ParseContext(plan=Plan())
+        _handle_mode_switch(["terminal"], ctx)
+        assert ctx.current_segment.session_name == "default"
+
+    def test_terminal_session_name_with_underscores(self):
+        """Should accept session names with underscores."""
+        ctx = _ParseContext(plan=Plan())
+        _handle_mode_switch(["terminal:my_session"], ctx)
+        assert ctx.current_segment.session_name == "my_session"
+
+    def test_terminal_session_name_with_dashes(self):
+        """Should accept session names with dashes."""
+        ctx = _ParseContext(plan=Plan())
+        _handle_mode_switch(["terminal:my-session"], ctx)
+        assert ctx.current_segment.session_name == "my-session"
+
+    def test_terminal_invalid_session_name_with_space(self):
+        """Should reject session names with invalid characters."""
+        ctx = _ParseContext(plan=Plan())
+        with pytest.raises(ValueError, match="Invalid session name"):
+            _handle_mode_switch(["terminal:my session"], ctx)
+
+    def test_terminal_invalid_session_name_with_emoji(self):
+        """Should reject session names with emoji."""
+        ctx = _ParseContext(plan=Plan())
+        with pytest.raises(ValueError, match="Invalid session name"):
+            _handle_mode_switch(["terminal:💩"], ctx)
+
+    def test_terminal_empty_session_name(self):
+        """Should reject empty session names."""
+        ctx = _ParseContext(plan=Plan())
+        with pytest.raises(ValueError, match="cannot be empty"):
+            _handle_mode_switch(["terminal:"], ctx)
+
 
 class TestHandleTerminalDirective:
     """Test _handle_terminal_directive function."""

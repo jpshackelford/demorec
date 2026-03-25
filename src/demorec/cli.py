@@ -52,15 +52,17 @@ def _print_plan_summary(plan: Plan):
 
 def _run_recording(plan: Plan):
     """Execute the recording and handle errors."""
-    runner = Runner(plan)
+    runner = None
     try:
+        runner = Runner(plan)
         runner.run()
         console.print(f"\n[bold green]✓[/] Saved to {plan.output}")
     except Exception as e:
         console.print(f"[bold red]Recording error:[/] {e}")
         raise SystemExit(1)
     finally:
-        runner.cleanup()
+        if runner is not None:
+            runner.cleanup()
 
 
 @click.group()

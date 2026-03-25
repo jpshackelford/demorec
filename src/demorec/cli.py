@@ -345,7 +345,7 @@ def _get_screenshot_mode(screenshots: bool | None) -> str:
 
 def _get_capture_frames_mode(frames: bool | None, output_dir: Path | None) -> bool:
     """Determine if frame capture should be enabled.
-    
+
     Default: enabled when --output-dir is set, unless --no-frames is specified.
     """
     if frames is True:
@@ -381,22 +381,27 @@ def _execute_preview(previewer, script, segment, output_dir):
 def _print_preview_results(result):
     """Print preview results and exit if failures."""
     console.print()
-
     for i, r in enumerate(result.results, 1):
         _print_checkpoint_result(i, r)
+    _print_frame_summary(result)
+    _print_final_summary(result)
 
-    # Show frame capture summary
+
+def _print_frame_summary(result):
+    """Print frame capture summary if frames were captured."""
     if result.frame_count > 0 and result.frames_dir:
-        console.print(f"[dim]Frames captured: {result.frame_count} frames to {result.frames_dir}[/]")
+        console.print(f"[dim]Frames captured: {result.frame_count} to {result.frames_dir}[/]")
 
+
+def _print_final_summary(result):
+    """Print final pass/fail summary and exit if failures."""
     if result.failed > 0:
         msg = f"[bold red]Summary: {result.passed}/{result.total} passed, {result.failed} failed[/]"
         console.print(msg)
         if result.screenshot_dir:
             console.print(f"[dim]Screenshots saved to: {result.screenshot_dir}[/]")
         raise SystemExit(1)
-    else:
-        console.print(f"[bold green]Summary: {result.passed}/{result.total} passed[/]")
+    console.print(f"[bold green]Summary: {result.passed}/{result.total} passed[/]")
 
 
 def _print_checkpoint_result(i: int, r):

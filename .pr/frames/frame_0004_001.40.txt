@@ -1,0 +1,14 @@
+$ echo "Hello from demorec!"
+Hello from demorec!
+$ cat > greet.py << 'EOF'
+> def greet(name):
+>     """Generate a personalized greeting."""
+>     return f"Hello, {name}!"
+> 
+> if __name__ == '__main__':
+>     print(greet('AI Agent'))
+>     print(greet('World'))
+> EOF
+$ ls -la greet.py
+-rw-r--r-- 1 user user 142 Mar 25 22:20 greet.py
+$ 

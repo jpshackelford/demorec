@@ -1,0 +1,53 @@
+1
+00:00:00,005 --> 00:00:09,485
+When creating demos, switching between
+terminal and browser used to lose all your
+terminal state. Let me show you how
+persistent sessions fix this.
+
+2
+00:00:20,242 --> 00:00:22,714
+Now switching to browser.
+
+3
+00:00:25,565 --> 00:00:30,461
+Back to terminal. Watch - the state is
+preserved.
+
+4
+00:00:36,907 --> 00:00:40,723
+Directory and environment variables are
+intact!
+
+5
+00:00:40,729 --> 00:00:45,721
+Now for named sessions - running server
+and client terminals simultaneously.
+
+6
+00:00:55,584 --> 00:00:58,896
+Server running on port twelve thousand
+one.
+
+7
+00:00:59,202 --> 00:01:01,890
+In a separate client terminal:
+
+8
+00:01:05,853 --> 00:01:08,469
+Client fetches from server.
+
+9
+00:01:08,803 --> 00:01:11,731
+Switching back to the server session.
+
+10
+00:01:15,083 --> 00:01:18,611
+And our original terminal still has its
+state.
+
+11
+00:01:26,865 --> 00:01:31,713
+That's persistent sessions and named
+sessions - complex demos made simple.
+

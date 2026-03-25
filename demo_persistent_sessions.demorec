@@ -1,0 +1,93 @@
+# Demo: Persistent Terminal Sessions & Named Sessions (PR #8)
+# Demonstrates Issues #4 and #5
+
+Output demo_persistent_sessions.mp4
+Set Width 1280
+Set Height 720
+
+# @voice edge:guy
+
+# ═══════════════════════════════════════════════════
+# PART 1: Persistent Sessions - State Preserved
+# ═══════════════════════════════════════════════════
+
+@mode terminal
+# @narrate:before "When creating demos, switching between terminal and browser used to lose all your terminal state. Let me show you how persistent sessions fix this."
+Sleep 1s
+
+# Set up state in terminal
+Type "cd /tmp && mkdir -p demo && cd demo"
+Enter
+Sleep 500ms
+Type "export SECRET='my-token-123'"
+Enter
+Sleep 500ms
+Type "echo 'Current dir:' $(pwd) '| Secret:' $SECRET"
+Enter
+Sleep 1.5s
+
+# @narrate:after "Now switching to browser."
+Sleep 500ms
+
+@mode browser
+Navigate "https://work-1-jbxdmkjqswboaiqp.prod-runtime.all-hands.dev/"
+Sleep 2s
+
+# Back to terminal - state should persist
+@mode terminal
+# @narrate:before "Back to terminal. Watch - the state is preserved."
+Sleep 500ms
+Type "echo 'Still in:' $(pwd) '| Secret still:' $SECRET"
+Enter
+Sleep 2s
+# @narrate:after "Directory and environment variables are intact!"
+Sleep 1s
+
+# ═══════════════════════════════════════════════════
+# PART 2: Named Sessions - Multiple Independent Terminals
+# ═══════════════════════════════════════════════════
+
+# @narrate:before "Now for named sessions - running server and client terminals simultaneously."
+Sleep 500ms
+
+# Server terminal
+@mode terminal:server
+Type "echo '<h1>Hello from demorec server!</h1>' > /tmp/demo/index.html"
+Enter
+Sleep 300ms
+Type "python3 -m http.server 12001 --directory /tmp/demo &"
+Enter
+Sleep 1.5s
+# @narrate:after "Server running on port twelve thousand one."
+Sleep 500ms
+
+# Client terminal
+@mode terminal:client
+# @narrate:before "In a separate client terminal:"
+Type "curl -s http://localhost:12001/"
+Enter
+Sleep 1.5s
+# @narrate:after "Client fetches from server."
+Sleep 500ms
+
+# Back to server
+@mode terminal:server
+# @narrate:before "Switching back to the server session."
+Type "echo 'Server session preserved!'"
+Enter
+Sleep 1s
+
+# Original terminal still has its state
+@mode terminal
+# @narrate:before "And our original terminal still has its state."
+Type "echo 'Original session - Secret:' $SECRET"
+Enter
+Sleep 1.5s
+
+# Clean up
+Type "pkill -f 'http.server 12001' 2>/dev/null"
+Enter
+Sleep 300ms
+
+# @narrate:after "That's persistent sessions and named sessions - complex demos made simple."
+Sleep 1.5s

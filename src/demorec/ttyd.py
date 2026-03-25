@@ -83,26 +83,63 @@ def start_ttyd(
     port: int,
     env: dict[str, str] | None = None,
     ttyd_path: str | None = None,
+    session_name: str | None = None,
 ) -> subprocess.Popen:
-    """Start ttyd subprocess."""
+    """Start ttyd subprocess.
+
+    Args:
+        port: Port to listen on
+        env: Environment variables (default: clean env)
+        ttyd_path: Path to ttyd binary (default: auto-detect)
+        session_name: If provided, use tmux for persistent sessions
+    """
     ttyd_path = ttyd_path or find_ttyd()
     env = env or make_clean_env()
-    cmd = _build_ttyd_cmd(ttyd_path, port)
+    cmd = _build_ttyd_cmd(ttyd_path, port, session_name)
     return subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def _build_ttyd_cmd(ttyd_path: str, port: int) -> list[str]:
+def _build_ttyd_cmd(ttyd_path: str, port: int, session_name: str | None = None) -> list[str]:
     """Build ttyd command line."""
-    return [
-        ttyd_path,
-        "-p",
-        str(port),
-        "--writable",
-        "--once",
-        "/bin/bash",
-        "--norc",
-        "--noprofile",
-    ]
+    base = [ttyd_path, "-p", str(port), "--writable"]
+    if session_name:
+        # Use tmux for persistent sessions - attach to existing session
+        # The session should be pre-created by ensure_tmux_session()
+        return base + ["tmux", "attach-session", "-t", f"demorec-{session_name}"]
+    # Non-persistent: use --once for clean exit
+    return base + ["--once", "/bin/bash", "--norc", "--noprofile"]
+
+
+def ensure_tmux_session(session_name: str) -> None:
+    """Ensure a tmux session exists, creating it if needed.
+
+    Creates the session with a clean shell environment (minimal prompt,
+    no history, etc.) suitable for demo recording. Disables tmux status bar
+    for clean video output.
+    """
+    tmux_session = f"demorec-{session_name}"
+    # Check if session exists
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", tmux_session],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        # Create session in detached mode with clean shell and minimal prompt
+        env = make_clean_env()
+        subprocess.run(
+            [
+                "tmux", "new-session", "-d", "-s", tmux_session,
+                # Use env command to set PS1 before starting bash
+                "/usr/bin/env", "PS1=$ ", "/bin/bash", "--norc", "--noprofile",
+            ],
+            env=env,
+            capture_output=True,
+        )
+        # Disable tmux status bar for clean video recording
+        subprocess.run(
+            ["tmux", "set-option", "-t", tmux_session, "status", "off"],
+            capture_output=True,
+        )
 
 
 def stop_ttyd(process: subprocess.Popen | None) -> None:

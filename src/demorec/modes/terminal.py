@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from ..parser import Command, Segment
-from ..ttyd import check_ttyd, find_free_port, start_ttyd, stop_ttyd
+from ..ttyd import check_ttyd, ensure_tmux_session, find_free_port, start_ttyd, stop_ttyd
 from ..xterm import TerminalConfig, fit_to_rows, setup_terminal
 from . import CommandExecutorMixin
 from .terminal_commands import TERMINAL_COMMANDS, THEMES
@@ -20,10 +20,12 @@ from .vim import VimCommandExpander
 
 
 class TerminalSession:
-    """Manages a single persistent terminal session via ttyd.
+    """Manages a single persistent terminal session via ttyd + tmux.
 
     The session persists across multiple recording segments, preserving
     working directory, environment variables, and terminal history.
+    Uses tmux under the hood so that reconnecting to ttyd attaches to
+    the same shell session.
     """
 
     def __init__(self, name: str = "default"):
@@ -35,6 +37,7 @@ class TerminalSession:
         """Start the ttyd process for this session.
 
         If the process died, gets a new port to avoid conflicts.
+        Uses tmux for session persistence across browser reconnections.
         """
         if self.is_running():
             return
@@ -45,10 +48,12 @@ class TerminalSession:
         # Get fresh port if restarting (old port may be taken)
         if self._process is not None:
             self.port = find_free_port()
-        self._process = start_ttyd(self.port)
+        # Ensure tmux session exists before starting ttyd
+        ensure_tmux_session(self.name)
+        self._process = start_ttyd(self.port, session_name=self.name)
 
     def stop(self) -> None:
-        """Stop the ttyd process."""
+        """Stop the ttyd process and kill the tmux session."""
         if self._process:
             self._process.terminate()
             try:
@@ -56,6 +61,12 @@ class TerminalSession:
             except subprocess.TimeoutExpired:
                 self._process.kill()
             self._process = None
+        # Also kill the tmux session
+        tmux_session = f"demorec-{self.name}"
+        subprocess.run(
+            ["tmux", "kill-session", "-t", tmux_session],
+            capture_output=True,
+        )
 
     def is_running(self) -> bool:
         """Check if the ttyd process is still running.
@@ -335,7 +346,7 @@ class TerminalRecorder(CommandExecutorMixin):
 
     async def _setup_session(self) -> tuple[int, bool]:
         """Set up terminal session and return (port, owns_session)."""
-        if self.session_manager:
+        if self.session_manager is not None:
             session = self.session_manager.get_or_create(self.session_name)
             await asyncio.sleep(0.3)
             return session.port, False

@@ -118,11 +118,20 @@ def _tmux_session_exists(tmux_session: str) -> bool:
 
 def _create_tmux_session(tmux_session: str) -> None:  # length-ok: subprocess calls
     """Create a new tmux session with clean shell environment."""
-    cmd = ["tmux", "new-session", "-d", "-s", tmux_session,
-           "/usr/bin/env", "PS1=$ ", "/bin/bash", "--norc", "--noprofile"]
+    cmd = [
+        "tmux",
+        "new-session",
+        "-d",
+        "-s",
+        tmux_session,
+        "/usr/bin/env",
+        "PS1=$ ",
+        "/bin/bash",
+        "--norc",
+        "--noprofile",
+    ]
     subprocess.run(cmd, env=make_clean_env(), capture_output=True)
-    subprocess.run(["tmux", "set-option", "-t", tmux_session, "status", "off"],
-                   capture_output=True)
+    subprocess.run(["tmux", "set-option", "-t", tmux_session, "status", "off"], capture_output=True)
 
 
 def ensure_tmux_session(session_name: str) -> None:

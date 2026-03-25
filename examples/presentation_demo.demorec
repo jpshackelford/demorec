@@ -1,0 +1,48 @@
+# Example: Mixed presentation and terminal demo
+# This demonstrates using Marp slides with live terminal demos
+
+Output presentation_demo.mp4
+Set Width 1920
+Set Height 1080
+
+# @voice edge:jenny
+
+# ─────────────────────────────────────
+# INTRO SLIDES
+# Using OpenHands theme from GitHub URL
+# ─────────────────────────────────────
+@mode presentation "https://raw.githubusercontent.com/jpshackelford/marp-intro/main/examples/openhands-intro/openhands-intro.md"
+Set Theme "openhands"
+
+# @narrate:during "Welcome to OpenHands, the open source AI coding agent."
+Slide 1 4s
+
+# @narrate:during "Let me show you how easy it is to get started."
+Slide 2 3s
+
+# ─────────────────────────────────────
+# LIVE TERMINAL DEMO
+# ─────────────────────────────────────
+@mode terminal
+
+# @narrate:before "First, we install OpenHands using pip."
+Type "pip install openhands"
+Enter
+Sleep 3s
+
+# @narrate:during "Now let's verify the installation."
+Type "openhands --version"
+Enter
+Sleep 2s
+
+# ─────────────────────────────────────
+# CLOSING SLIDE
+# ─────────────────────────────────────
+@mode presentation "https://raw.githubusercontent.com/jpshackelford/marp-intro/main/examples/openhands-intro/openhands-intro.md"
+Set Theme "openhands"
+
+# @narrate:during "That's all it takes to get started with OpenHands."
+Slide 20 4s
+
+# @narrate:during "Visit openhands.dev to learn more. Thank you for watching!"
+Slide 21 5s

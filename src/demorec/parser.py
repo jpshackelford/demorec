@@ -33,13 +33,16 @@ class Narration:
 class Segment:
     """A segment of commands in a single mode."""
 
-    mode: Literal["terminal", "browser"]
+    mode: Literal["terminal", "browser", "presentation"]
     session_name: str = "default"  # For terminal sessions (e.g., terminal:server)
     commands: list[Command] = field(default_factory=list)
     narrations: dict[int, Narration] = field(default_factory=dict)  # command_index -> narration
     # Terminal-specific settings
     size: Literal["large", "medium", "small", "tiny"] | None = None  # Display size preset
     rows: int | None = None  # Explicit row count (overrides size preset)
+    # Presentation-specific settings
+    presentation_file: str | None = None  # Path or URL to .md file
+    presentation_theme: str | None = None  # Path, URL, or alias to CSS theme
     # Runtime field: populated by Runner with TimedNarration objects
     # Type is dict[int, "TimedNarration"] but avoiding import to prevent circular deps
     timed_narrations: dict = field(default_factory=dict)
@@ -198,7 +201,10 @@ def _handle_set_directive(args: list[str], line_num: int, ctx: _ParseContext):
     if key in setters:
         setters[key]()
     elif key == "theme" and ctx.current_segment:
-        ctx.current_segment.commands.append(Command("SetTheme", [val], line_num))
+        if ctx.current_segment.mode == "presentation":
+            ctx.current_segment.presentation_theme = val
+        else:
+            ctx.current_segment.commands.append(Command("SetTheme", [val], line_num))
 
 
 def _handle_mode_switch(args: list[str], ctx: _ParseContext):
@@ -208,6 +214,7 @@ def _handle_mode_switch(args: list[str], ctx: _ParseContext):
     - @mode terminal -> default session
     - @mode terminal:server -> named "server" session
     - @mode browser -> browser mode (session_name ignored)
+    - @mode presentation "file.md" -> presentation mode with Marp slides
     """
     if not args:
         return
@@ -222,6 +229,10 @@ def _handle_mode_switch(args: list[str], ctx: _ParseContext):
 
     if mode in ("terminal", "browser"):
         ctx.current_segment = Segment(mode=mode, session_name=session_name)
+        ctx.plan.segments.append(ctx.current_segment)
+    elif mode == "presentation":
+        file_path = parse_string(args[1]) if len(args) > 1 else None
+        ctx.current_segment = Segment(mode="presentation", presentation_file=file_path)
         ctx.plan.segments.append(ctx.current_segment)
 
 

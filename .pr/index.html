@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Demorec Demo - Persistent Terminal Sessions</title>
+    <title>Demorec Demo - Presentation Mode</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -39,75 +39,89 @@
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
         th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #334155; }
         th { color: #00d4ff; font-weight: 600; }
-        .problem-box { background: #7c2d12; border-left: 4px solid #fb923c; padding: 1rem; border-radius: 0 8px 8px 0; margin-bottom: 1.5rem; }
-        .solution-box { background: #14532d; border-left: 4px solid #22c55e; padding: 1rem; border-radius: 0 8px 8px 0; }
+        .feature-box { background: #14532d; border-left: 4px solid #22c55e; padding: 1rem; border-radius: 0 8px 8px 0; margin-bottom: 1rem; }
+        pre { background: #0d1117; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+        pre code { background: none; padding: 0; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎬 Persistent Terminal Sessions</h1>
-        <p class="subtitle">PR #8: Never lose your terminal state again</p>
+        <h1>🎬 Presentation Mode</h1>
+        <p class="subtitle">PR #16: Render Marp slides directly in your demos</p>
 
         <div class="video-container">
-            <video controls autoplay muted>
-                <source src="https://github.com/jpshackelford/demorec/raw/feature/persistent-terminal-sessions/.pr/demo_persistent_sessions.mp4" type="video/mp4">
+            <video controls autoplay muted loop>
+                <source src="https://github.com/jpshackelford/demorec/raw/feature/presentation-mode/.pr/demo_presentation_mode.mp4" type="video/mp4">
                 Your browser does not support the video tag.
             </video>
         </div>
 
         <div class="info">
-            <h2>The Problem</h2>
-            <div class="problem-box">
-                When creating demos that switch between terminal and browser, you'd lose all terminal state—working directory, environment variables, running processes. Multi-terminal workflows (server + client) were impossible.
-            </div>
-            <h2>The Solution</h2>
-            <div class="solution-box">
-                <strong>Persistent Sessions:</strong> Terminal state now persists across mode switches. Switch to browser and back—your terminal is exactly where you left it.<br><br>
-                <strong>Named Sessions:</strong> Run multiple independent terminals simultaneously with <code>@mode terminal:server</code> and <code>@mode terminal:client</code>.
+            <h2>✨ New Feature</h2>
+            <div class="feature-box">
+                <strong>Presentation Mode</strong> brings Marp slides into your demorec workflow. Write Markdown, render beautiful slides, and seamlessly mix them with terminal demos—all from a single script.
             </div>
         </div>
 
         <div class="section info">
             <h2>What This Demonstrates</h2>
             <ul>
-                <li><span class="check">✓</span> <strong>Persistent Sessions (Issue #4):</strong> Set environment variables, switch to browser, return to terminal—state preserved</li>
-                <li><span class="check">✓</span> <strong>Named Sessions (Issue #5):</strong> Run HTTP server in <code>terminal:server</code>, make requests from <code>terminal:client</code></li>
-                <li><span class="check">✓</span> <strong>Session Independence:</strong> Default terminal, server, and client all maintain separate state</li>
-                <li><span class="check">✓</span> <strong>Mode Switching:</strong> 7 seamless segment transitions including browser view of the running server</li>
+                <li><span class="check">✓</span> <strong>Vim Editing:</strong> Edit a Marp presentation with syntax highlighting</li>
+                <li><span class="check">✓</span> <strong>Presentation Mode:</strong> Render slides with <code>@mode presentation "file.md"</code></li>
+                <li><span class="check">✓</span> <strong>OpenHands Theme:</strong> Professional styling with <code>Set Theme "openhands"</code></li>
+                <li><span class="check">✓</span> <strong>URL Loading:</strong> Load presentations from GitHub URLs</li>
+                <li><span class="check">✓</span> <strong>Mode Switching:</strong> Seamless transitions between slides and terminal</li>
             </ul>
             <div class="stats">
-                <div class="stat"><div class="stat-value">108s</div><div class="stat-label">Video Length</div></div>
-                <div class="stat"><div class="stat-value">7</div><div class="stat-label">Segments</div></div>
-                <div class="stat"><div class="stat-value">3</div><div class="stat-label">Terminal Sessions</div></div>
+                <div class="stat"><div class="stat-value">54s</div><div class="stat-label">Video Length</div></div>
+                <div class="stat"><div class="stat-value">5</div><div class="stat-label">Segments</div></div>
+                <div class="stat"><div class="stat-value">3</div><div class="stat-label">Mode Switches</div></div>
             </div>
         </div>
 
         <div class="section info">
             <h2>New Syntax</h2>
             <table>
-                <tr><th>Syntax</th><th>Description</th></tr>
-                <tr><td><code>@mode terminal</code></td><td>Default terminal session (state persists across mode switches)</td></tr>
-                <tr><td><code>@mode terminal:server</code></td><td>Named session "server" (independent from other sessions)</td></tr>
-                <tr><td><code>@mode terminal:client</code></td><td>Named session "client" (independent from other sessions)</td></tr>
+                <tr><th>Command</th><th>Description</th></tr>
+                <tr><td><code>@mode presentation "file.md"</code></td><td>Switch to presentation mode with local Marp file</td></tr>
+                <tr><td><code>@mode presentation "https://..."</code></td><td>Load presentation from URL</td></tr>
+                <tr><td><code>Set Theme "openhands"</code></td><td>Apply theme (alias, URL, or local CSS)</td></tr>
+                <tr><td><code>Slide N [time]</code></td><td>Display slide N for minimum time</td></tr>
             </table>
+        </div>
+
+        <div class="section info">
+            <h2>Example Script</h2>
+            <pre><code># Mix presentations with terminal demos
+@mode presentation "intro.md"
+Set Theme "openhands"
+Slide 1 3s
+Slide 2 3s
+
+@mode terminal
+Type "pip install mypackage"
+Enter
+
+@mode presentation "outro.md"
+Slide 1 3s</code></pre>
         </div>
 
         <div class="section info">
             <h2>Use Cases</h2>
             <ul>
-                <li><span class="check">✓</span> <strong>Server/Client Demos:</strong> Start server, make requests from client, show both logs</li>
-                <li><span class="check">✓</span> <strong>Full-Stack Tutorials:</strong> Terminal → Browser → Terminal without losing context</li>
-                <li><span class="check">✓</span> <strong>Multi-Service Workflows:</strong> Run database, backend, and frontend in separate sessions</li>
-                <li><span class="check">✓</span> <strong>Long-Running Processes:</strong> Keep processes running while recording other parts of the demo</li>
+                <li><span class="check">✓</span> <strong>Product Demos:</strong> Intro slides → Live demo → Closing slides</li>
+                <li><span class="check">✓</span> <strong>Tutorials:</strong> Explain concepts with slides, then demonstrate in terminal</li>
+                <li><span class="check">✓</span> <strong>Conference Talks:</strong> Record polished presentations with live coding</li>
+                <li><span class="check">✓</span> <strong>Documentation:</strong> Visual explanations alongside code examples</li>
             </ul>
         </div>
 
         <p style="text-align: center; margin-top: 2rem; color: #666;">
-            <a href="https://github.com/jpshackelford/demorec/pull/8" style="color: #00d4ff;">View PR #8</a>
+            <a href="https://github.com/jpshackelford/demorec/pull/16" style="color: #00d4ff;">View PR #16</a>
             &nbsp;|&nbsp;
-            <a href="https://github.com/jpshackelford/demorec/raw/feature/persistent-terminal-sessions/.pr/demo_persistent_sessions.mp4" style="color: #00d4ff;">Download Video</a>
+            <a href="https://github.com/jpshackelford/demorec/raw/feature/presentation-mode/.pr/demo_presentation_mode.mp4" style="color: #00d4ff;">Download Video</a>
             &nbsp;|&nbsp;
-            <a href="https://github.com/jpshackelford/demorec/blob/feature/persistent-terminal-sessions/demo_persistent_sessions.demorec" style="color: #00d4ff;">Demo Script</a>
+            <a href="https://github.com/jpshackelford/demorec/blob/feature/presentation-mode/demo_presentation_mode.demorec" style="color: #00d4ff;">Demo Script</a>
         </p>
     </div>
 </body>

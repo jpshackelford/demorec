@@ -244,9 +244,20 @@ def checkpoints(script: Path, output_format: str):
     "--output-dir",
     "-o",
     type=click.Path(path_type=Path),
-    help="Directory for screenshots (default: .demorec_preview)",
+    help="Directory for screenshots and frames (default: .demorec_preview)",
 )
-def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path | None):
+@click.option(
+    "--frames/--no-frames",
+    default=None,
+    help="Enable/disable frame-by-frame capture (default: enabled when --output-dir set)",
+)
+def preview(
+    script: Path,
+    rows: int,
+    screenshots: bool | None,
+    output_dir: Path | None,
+    frames: bool | None,
+):
     """Preview a script and verify checkpoints.
 
     Runs through the script, automatically detecting "show moments" and
@@ -258,13 +269,22 @@ def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path 
       --screenshots    Always capture screenshots
       --no-screenshots Never capture screenshots
 
+    \b
+    Frame capture (for AI debugging):
+      When --output-dir is set, captures terminal state at every step.
+      Frame files: frame_{NNNN}_{SSS.ss}.txt (terminal) or .png (browser)
+      --frames     Force enable frame capture
+      --no-frames  Disable frame capture
+
     Examples:
 
         demorec preview script.demorec --rows 30
 
         demorec preview script.demorec --screenshots
 
-        demorec preview script.demorec --no-screenshots
+        demorec preview script.demorec -o ./frames
+
+        demorec preview script.demorec -o ./frames --no-frames
     """
     console.print("[bold blue]demorec[/] preview")
     console.print(f"[dim]Script:[/] {script}")
@@ -272,11 +292,13 @@ def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path 
 
     segment = _get_terminal_segment(script)
     screenshot_mode = _get_screenshot_mode(screenshots)
+    capture_frames = _get_capture_frames_mode(frames, output_dir)
 
     console.print(f"[dim]Screenshots:[/] {screenshot_mode}")
+    console.print(f"[dim]Frame capture:[/] {'enabled' if capture_frames else 'disabled'}")
     console.print()
 
-    result = _run_preview(script, segment, rows, screenshot_mode, output_dir)
+    result = _run_preview(script, segment, rows, screenshot_mode, output_dir, capture_frames)
     _print_preview_results(result)
 
 
@@ -296,6 +318,22 @@ def _get_terminal_segment(script: Path):
     return terminal_segments[0]
 
 
+def _get_all_segments(script: Path):
+    """Parse script and return all segments with commands."""
+    try:
+        plan = parse_script(script)
+    except Exception as e:
+        console.print(f"[bold red]Parse error:[/] {e}")
+        raise SystemExit(1)
+
+    segments = [s for s in plan.segments if s.commands]
+    if not segments:
+        console.print("[bold red]Error:[/] No segments with commands found in script")
+        raise SystemExit(1)
+
+    return segments
+
+
 def _get_screenshot_mode(screenshots: bool | None) -> str:
     """Convert screenshots flag to mode string."""
     if screenshots is True:
@@ -305,11 +343,26 @@ def _get_screenshot_mode(screenshots: bool | None) -> str:
     return "on_error"
 
 
-def _run_preview(script, segment, rows, screenshot_mode, output_dir):
+def _get_capture_frames_mode(frames: bool | None, output_dir: Path | None) -> bool:
+    """Determine if frame capture should be enabled.
+    
+    Default: enabled when --output-dir is set, unless --no-frames is specified.
+    """
+    if frames is True:
+        return True
+    elif frames is False:
+        return False
+    # Default: enable when output_dir is provided
+    return output_dir is not None
+
+
+def _run_preview(script, segment, rows, screenshot_mode, output_dir, capture_frames):
     """Run preview with progress spinner."""
     from rich.progress import Progress, SpinnerColumn, TextColumn
 
-    previewer = TerminalPreviewer(rows=rows, screenshots=screenshot_mode)
+    previewer = TerminalPreviewer(
+        rows=rows, screenshots=screenshot_mode, capture_frames=capture_frames
+    )
     cols = [SpinnerColumn(), TextColumn("[progress.description]{task.description}")]
     with Progress(*cols, console=console) as p:
         p.add_task("Running preview...", total=None)
@@ -331,6 +384,10 @@ def _print_preview_results(result):
 
     for i, r in enumerate(result.results, 1):
         _print_checkpoint_result(i, r)
+
+    # Show frame capture summary
+    if result.frame_count > 0 and result.frames_dir:
+        console.print(f"[dim]Frames captured: {result.frame_count} frames to {result.frames_dir}[/]")
 
     if result.failed > 0:
         msg = f"[bold red]Summary: {result.passed}/{result.total} passed, {result.failed} failed[/]"

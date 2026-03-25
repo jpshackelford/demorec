@@ -110,36 +110,26 @@ def _build_ttyd_cmd(ttyd_path: str, port: int, session_name: str | None = None) 
     return base + ["--once", "/bin/bash", "--norc", "--noprofile"]
 
 
-def ensure_tmux_session(session_name: str) -> None:
-    """Ensure a tmux session exists, creating it if needed.
+def _tmux_session_exists(tmux_session: str) -> bool:
+    """Check if a tmux session exists."""
+    result = subprocess.run(["tmux", "has-session", "-t", tmux_session], capture_output=True)
+    return result.returncode == 0
 
-    Creates the session with a clean shell environment (minimal prompt,
-    no history, etc.) suitable for demo recording. Disables tmux status bar
-    for clean video output.
-    """
+
+def _create_tmux_session(tmux_session: str) -> None:  # length-ok: subprocess calls
+    """Create a new tmux session with clean shell environment."""
+    cmd = ["tmux", "new-session", "-d", "-s", tmux_session,
+           "/usr/bin/env", "PS1=$ ", "/bin/bash", "--norc", "--noprofile"]
+    subprocess.run(cmd, env=make_clean_env(), capture_output=True)
+    subprocess.run(["tmux", "set-option", "-t", tmux_session, "status", "off"],
+                   capture_output=True)
+
+
+def ensure_tmux_session(session_name: str) -> None:
+    """Ensure a tmux session exists, creating it if needed."""
     tmux_session = f"demorec-{session_name}"
-    # Check if session exists
-    result = subprocess.run(
-        ["tmux", "has-session", "-t", tmux_session],
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        # Create session in detached mode with clean shell and minimal prompt
-        env = make_clean_env()
-        subprocess.run(
-            [
-                "tmux", "new-session", "-d", "-s", tmux_session,
-                # Use env command to set PS1 before starting bash
-                "/usr/bin/env", "PS1=$ ", "/bin/bash", "--norc", "--noprofile",
-            ],
-            env=env,
-            capture_output=True,
-        )
-        # Disable tmux status bar for clean video recording
-        subprocess.run(
-            ["tmux", "set-option", "-t", tmux_session, "status", "off"],
-            capture_output=True,
-        )
+    if not _tmux_session_exists(tmux_session):
+        _create_tmux_session(tmux_session)
 
 
 def stop_ttyd(process: subprocess.Popen | None) -> None:

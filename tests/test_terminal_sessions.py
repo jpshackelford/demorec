@@ -53,15 +53,16 @@ class TestTerminalSession:
             assert session.is_running() is False
 
     def test_start_creates_process(self):
-        """Should start ttyd process on the port."""
+        """Should start ttyd process on the port with session name."""
         mock_process = MagicMock()
         with patch("demorec.modes.terminal.find_free_port", return_value=8080):
             with patch("demorec.modes.terminal.check_ttyd", return_value=True):
-                with patch("demorec.modes.terminal.start_ttyd", return_value=mock_process) as mock_start:
-                    session = TerminalSession()
-                    session.start()
-                    mock_start.assert_called_once_with(8080)
-                    assert session._process is mock_process
+                with patch("demorec.modes.terminal.ensure_tmux_session"):
+                    with patch("demorec.modes.terminal.start_ttyd", return_value=mock_process) as mock_start:
+                        session = TerminalSession()
+                        session.start()
+                        mock_start.assert_called_once_with(8080, session_name="default")
+                        assert session._process is mock_process
 
     def test_start_checks_ttyd_availability(self):
         """Should check ttyd is available before starting."""

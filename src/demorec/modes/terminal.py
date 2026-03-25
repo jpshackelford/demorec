@@ -30,18 +30,22 @@ class TerminalSession:
         self.name = name
         self.port = find_free_port()
         self._process: subprocess.Popen | None = None
-        self._started = False
 
     def start(self) -> None:
-        """Start the ttyd process for this session."""
-        if self._started:
+        """Start the ttyd process for this session.
+
+        If the process died, gets a new port to avoid conflicts.
+        """
+        if self.is_running():
             return
         if not check_ttyd():
             from ..ttyd import find_ttyd
 
             find_ttyd()  # Raises with install instructions
+        # Get fresh port if restarting (old port may be taken)
+        if self._process is not None:
+            self.port = find_free_port()
         self._process = start_ttyd(self.port)
-        self._started = True
 
     def stop(self) -> None:
         """Stop the ttyd process."""
@@ -52,10 +56,12 @@ class TerminalSession:
             except subprocess.TimeoutExpired:
                 self._process.kill()
             self._process = None
-        self._started = False
 
     def is_running(self) -> bool:
-        """Check if the ttyd process is still running."""
+        """Check if the ttyd process is still running.
+
+        This is the source of truth for session state.
+        """
         if self._process is None:
             return False
         return self._process.poll() is None
@@ -305,7 +311,7 @@ class TerminalRecorder(CommandExecutorMixin):
         if result.returncode != 0:
             raise RuntimeError(f"FFmpeg conversion failed: {result.stderr}")
 
-    def _build_convert_cmd(  # length-ok
+    def _build_convert_cmd(  # length-ok: ffmpeg args must be in specific order
         self, webm_path: Path, mp4_path: Path, trim_start: float
     ) -> list:
         """Build FFmpeg conversion command."""
@@ -338,7 +344,7 @@ class TerminalRecorder(CommandExecutorMixin):
         await asyncio.sleep(0.5)
         return port, True
 
-    async def _record_async(  # length-ok
+    async def _record_async(  # length-ok: atomic setup/record/teardown transaction
         self, segment: Segment, output: Path
     ) -> dict[int, tuple[float, float]]:
         """Record terminal session using ttyd and Playwright."""

@@ -1,62 +1,58 @@
 1
-00:00:00,006 --> 00:00:09,486
-When creating demos, switching between
-terminal and browser used to lose all your
-terminal state. Let me show you how
-persistent sessions fix this.
+00:00:00,012 --> 00:00:11,868
+When creating demos, you often need
+multiple terminals and mode switches.
+Previously, you'd lose all terminal state.
+Let me show you how persistent sessions
+fix this.
 
 2
-00:00:21,945 --> 00:00:24,417
-Now switching to browser.
+00:00:23,483 --> 00:00:30,899
+We've set up our working directory and
+environment. Now let's start a web server
+in a separate terminal.
 
 3
-00:00:27,405 --> 00:00:32,301
-Back to terminal. Watch - the state is
-preserved.
+00:00:31,246 --> 00:00:36,862
+This is a named session called 'server'.
+It's completely independent.
 
 4
-00:00:37,269 --> 00:00:41,085
-Directory and environment variables are
-intact!
+00:00:51,965 --> 00:00:56,405
+Server is running. Let's see it in the
+browser.
 
 5
-00:00:41,095 --> 00:00:46,087
-Now for named sessions - running server
-and client terminals simultaneously.
-
-6
-00:01:01,899 --> 00:01:05,211
-Server running on port twelve thousand
-one.
-
-7
-00:01:05,521 --> 00:01:07,921
-Let's see it in the browser.
-
-8
-00:01:12,012 --> 00:01:14,724
+00:01:00,779 --> 00:01:03,491
 The page loads from our server.
 
-9
-00:01:14,563 --> 00:01:17,539
+6
+00:01:03,443 --> 00:01:06,419
 Now from a separate client terminal:
 
-10
-00:01:21,839 --> 00:01:24,743
+7
+00:01:10,735 --> 00:01:13,639
 Client fetches the same content.
 
+8
+00:01:14,086 --> 00:01:20,254
+Back to the server terminal. Notice the
+request logs - the session persisted.
+
+9
+00:01:22,686 --> 00:01:28,566
+And our original default terminal? Still
+has its state from the beginning.
+
+10
+00:01:32,477 --> 00:01:37,781
+Working directory and environment
+variables intact across all those mode
+switches!
+
 11
-00:01:25,160 --> 00:01:29,288
-Back to the server terminal - we can see
-the request logs.
-
-12
-00:01:31,603 --> 00:01:35,131
-And our original terminal still has its
-state.
-
-13
-00:01:42,771 --> 00:01:47,619
+00:01:42,118 --> 00:01:47,758
 That's persistent sessions and named
-sessions - complex demos made simple.
+sessions - complex multi-terminal demos
+made simple.
 

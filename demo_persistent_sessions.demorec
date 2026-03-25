@@ -16,13 +16,16 @@ Set Height 720
 Sleep 1s
 
 # Set up state in terminal
-Type "cd /tmp && mkdir -p demo && cd demo"
+Type "cd /tmp && mkdir -p myproject && cd myproject"
 Enter
 Sleep 500ms
-Type "export SECRET='my-token-123'"
+Type "export API_KEY='secret-token-xyz'"
 Enter
 Sleep 500ms
-Type "echo 'Current dir:' $(pwd) '| Secret:' $SECRET"
+Type "echo 'Directory:' $(pwd)"
+Enter
+Sleep 500ms
+Type "echo 'API Key:' $API_KEY"
 Enter
 Sleep 1.5s
 
@@ -30,16 +33,19 @@ Sleep 1.5s
 Sleep 500ms
 
 @mode browser
-Navigate "https://work-1-jbxdmkjqswboaiqp.prod-runtime.all-hands.dev/"
+Navigate "https://example.com"
 Sleep 2s
 
 # Back to terminal - state should persist
 @mode terminal
 # @narrate:before "Back to terminal. Watch - the state is preserved."
 Sleep 500ms
-Type "echo 'Still in:' $(pwd) '| Secret still:' $SECRET"
+Type "pwd"
 Enter
-Sleep 2s
+Sleep 500ms
+Type "echo $API_KEY"
+Enter
+Sleep 1.5s
 # @narrate:after "Directory and environment variables are intact!"
 Sleep 1s
 
@@ -50,44 +56,56 @@ Sleep 1s
 # @narrate:before "Now for named sessions - running server and client terminals simultaneously."
 Sleep 500ms
 
-# Server terminal
+# Server terminal - create everything in this session
 @mode terminal:server
-Type "echo '<h1>Hello from demorec server!</h1>' > /tmp/demo/index.html"
+Type "mkdir -p /tmp/webserver && cd /tmp/webserver"
 Enter
-Sleep 300ms
-Type "python3 -m http.server 12001 --directory /tmp/demo &"
+Sleep 500ms
+Type "echo '<html><body><h1>Hello from demorec!</h1><p>Server running on port 12001</p></body></html>' > index.html"
 Enter
-Sleep 1.5s
+Sleep 500ms
+Type "python3 -m http.server 12001"
+Enter
+Sleep 3s
 # @narrate:after "Server running on port twelve thousand one."
 Sleep 500ms
 
-# Client terminal
-@mode terminal:client
-# @narrate:before "In a separate client terminal:"
-Type "curl -s http://localhost:12001/"
-Enter
-Sleep 1.5s
-# @narrate:after "Client fetches from server."
+# Show in browser via work-2 URL (port 12001)
+@mode browser
+# @narrate:before "Let's see it in the browser."
+Navigate "https://work-2-jbxdmkjqswboaiqp.prod-runtime.all-hands.dev/"
+Sleep 3s
+# @narrate:after "The page loads from our server."
 Sleep 500ms
 
-# Back to server
-@mode terminal:server
-# @narrate:before "Switching back to the server session."
-Type "echo 'Server session preserved!'"
+# Client terminal makes a request
+@mode terminal:client
+# @narrate:before "Now from a separate client terminal:"
+Type "curl http://localhost:12001/"
 Enter
-Sleep 1s
+Sleep 2s
+# @narrate:after "Client fetches the same content."
+Sleep 500ms
+
+# Back to server - show logs
+@mode terminal:server
+# @narrate:before "Back to the server terminal - we can see the request logs."
+Sleep 2s
 
 # Original terminal still has its state
 @mode terminal
 # @narrate:before "And our original terminal still has its state."
-Type "echo 'Original session - Secret:' $SECRET"
+Type "pwd && echo $API_KEY"
 Enter
 Sleep 1.5s
 
-# Clean up
-Type "pkill -f 'http.server 12001' 2>/dev/null"
+# Clean up - stop the server
+@mode terminal:server
+Ctrl+C
+Sleep 500ms
+Type "echo 'Server stopped cleanly'"
 Enter
-Sleep 300ms
+Sleep 500ms
 
 # @narrate:after "That's persistent sessions and named sessions - complex demos made simple."
 Sleep 1.5s

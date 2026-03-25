@@ -1,0 +1,72 @@
+# Persistent Terminal Sessions Demo
+# Demonstrates: Issue #4 (persistent sessions) and Issue #5 (named sessions)
+#
+# Uses work-2 URL (port 12001) for real browser integration
+
+Output persistent-sessions-demo.mp4
+Set Width 1280
+Set Height 720
+
+# ═══════════════════════════════════════════════════
+# PART 1: Prove persistent sessions across mode switch
+# ═══════════════════════════════════════════════════
+
+@mode terminal
+Type "cd /tmp && mkdir -p demo-test"
+Enter
+Sleep 500ms
+Type "export MY_VAR='Hello from before browser!'"
+Enter
+Sleep 500ms
+Type "pwd && echo $MY_VAR"
+Enter
+Sleep 1s
+
+# ═══════════════════════════════════════════════════
+# PART 2: Start server, view in browser, check logs
+# ═══════════════════════════════════════════════════
+
+# Start a server on port 12001 (exposed via work-2 URL)
+@mode terminal:server
+Type "cd /tmp/demo-test && echo '<h1>Hello from demorec!</h1><p>Server running on port 12001</p>' > index.html"
+Enter
+Sleep 500ms
+Type "python3 -m http.server 12001"
+Enter
+Sleep 2s
+
+# View the server in browser via work-2 URL
+@mode browser
+Navigate "https://work-2-vhoebszcosglbmlg.prod-runtime.all-hands.dev/"
+Sleep 3s
+
+# Back to original terminal - state should persist!
+@mode terminal
+Type "pwd"
+Enter
+Sleep 500ms
+Type "echo $MY_VAR"
+Enter
+Sleep 1s
+
+# ═══════════════════════════════════════════════════
+# PART 3: Multiple named sessions - client/server
+# ═══════════════════════════════════════════════════
+
+# Use client terminal to make requests
+@mode terminal:client
+Type "curl http://localhost:12001/"
+Enter
+Sleep 1s
+Type "curl http://localhost:12001/index.html"
+Enter
+Sleep 1s
+
+# Switch back to server - should still be running, showing request logs
+@mode terminal:server
+Sleep 2s
+Ctrl+C
+Sleep 500ms
+Type "echo 'Server stopped, but session preserved!'"
+Enter
+Sleep 1s

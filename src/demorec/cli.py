@@ -44,18 +44,25 @@ def _print_plan_summary(plan: Plan):
     console.print(f"[dim]Output:[/] {plan.output}")
     console.print(f"[dim]Segments:[/] {len(plan.segments)}")
     for i, seg in enumerate(plan.segments):
-        console.print(f"  [cyan]{i + 1}.[/] {seg.mode} ({len(seg.commands)} commands)")
+        mode_display = seg.mode
+        if seg.mode == "terminal" and seg.session_name != "default":
+            mode_display = f"{seg.mode}:{seg.session_name}"
+        console.print(f"  [cyan]{i + 1}.[/] {mode_display} ({len(seg.commands)} commands)")
 
 
 def _run_recording(plan: Plan):
     """Execute the recording and handle errors."""
-    runner = Runner(plan)
+    runner = None
     try:
+        runner = Runner(plan)
         runner.run()
         console.print(f"\n[bold green]✓[/] Saved to {plan.output}")
     except Exception as e:
         console.print(f"[bold red]Recording error:[/] {e}")
         raise SystemExit(1)
+    finally:
+        if runner is not None:
+            runner.cleanup()
 
 
 @click.group()

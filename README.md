@@ -251,9 +251,31 @@ Set Framerate 30             # Video framerate
 ### Mode Switching
 
 ```tape
-@mode terminal               # Switch to terminal recording
+@mode terminal               # Switch to terminal recording (default session)
+@mode terminal:server        # Switch to named terminal session "server"
+@mode terminal:client        # Switch to named terminal session "client"
 @mode browser                # Switch to browser recording
 ```
+
+**Persistent Sessions:** Terminal state (working directory, environment variables, running processes) persists when switching between modes. Returning to the same terminal session reconnects to the existing shell—no state is lost.
+
+**Named Sessions:** Use `terminal:name` to create multiple independent terminal sessions. Each named session has its own isolated environment, perfect for server/client demos or multi-service workflows.
+
+#### How It Works
+
+Under the hood, demorec uses tmux to maintain persistent terminal sessions. When you switch from `terminal` to `browser` and back, you reconnect to the same tmux session with all your state intact.
+
+#### Tips for Effective Use
+
+1. **Set up state early:** Initialize environment variables and working directories at the start of your script—they'll persist throughout.
+
+2. **Use named sessions for long-running processes:** Start servers in `terminal:server` so you can switch to other terminals or browser without killing them.
+
+3. **Show state preservation explicitly:** After switching modes, run commands like `pwd` or `echo $VAR` to demonstrate that state persisted—this creates an "aha!" moment for viewers.
+
+4. **Clean up gracefully:** Use `Ctrl+C` in server terminals before the demo ends to show clean shutdown.
+
+5. **Keep session names meaningful:** Use descriptive names like `terminal:api`, `terminal:frontend`, `terminal:logs` rather than generic names.
 
 ### Terminal Commands
 
@@ -435,6 +457,82 @@ Sleep 3s
 Sleep 2s
 ```
 
+### Multiple Terminal Sessions
+
+This example demonstrates a server/client workflow with persistent state:
+
+```tape
+Output multi-terminal-demo.mp4
+Set Width 1280
+Set Height 720
+
+# ─────────────────────────────────────
+# Set up environment in default terminal
+# ─────────────────────────────────────
+@mode terminal
+Type "export API_KEY='demo-key-123'"
+Enter
+Type "cd /tmp && mkdir -p myapp && cd myapp"
+Enter
+Sleep 500ms
+
+# ─────────────────────────────────────
+# Start server in named terminal
+# ─────────────────────────────────────
+@mode terminal:server
+Type "cd /tmp/myapp"
+Enter
+Type "echo '<h1>Hello World</h1>' > index.html"
+Enter
+Type "python3 -m http.server 3000"
+Enter
+Sleep 2s
+
+# ─────────────────────────────────────
+# View in browser (server keeps running!)
+# ─────────────────────────────────────
+@mode browser
+Navigate "http://localhost:3000"
+Sleep 2s
+
+# ─────────────────────────────────────
+# Test from client terminal
+# ─────────────────────────────────────
+@mode terminal:client
+Type "curl http://localhost:3000/"
+Enter
+Sleep 1s
+
+# ─────────────────────────────────────
+# Check server logs (session preserved)
+# ─────────────────────────────────────
+@mode terminal:server
+# We see the server still running with request logs
+Sleep 2s
+
+# ─────────────────────────────────────
+# Original terminal state is intact!
+# ─────────────────────────────────────
+@mode terminal
+Type "echo $API_KEY && pwd"
+Enter
+# Shows: demo-key-123 and /tmp/myapp
+Sleep 1s
+
+# ─────────────────────────────────────
+# Clean up
+# ─────────────────────────────────────
+@mode terminal:server
+Ctrl+C
+Sleep 500ms
+```
+
+**Key points demonstrated:**
+- State in `terminal` (env vars, working dir) persists across all mode switches
+- Server in `terminal:server` keeps running while you switch to browser and client
+- Each named session is independent—`terminal:client` doesn't share state with `terminal:server`
+- Returning to any terminal reconnects to the same session
+
 ### Code Review Demo (Vim Primitives)
 
 ```tape
@@ -527,7 +625,8 @@ Sleep 1s
 ### Phase 7: Advanced Features (Future)
 - [ ] `Include` directive for reusable snippets
 - [ ] `Hide`/`Show` for setup commands
-- [ ] Persistent terminal session across mode switches
+- [x] Persistent terminal session across mode switches
+- [x] Multiple named terminal sessions (`@mode terminal:name`)
 - [ ] GIF output support
 - [ ] Cursor/mouse visualization in browser
 - [ ] Picture-in-picture mode

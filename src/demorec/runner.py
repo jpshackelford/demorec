@@ -17,7 +17,7 @@ from .audio import (
 )
 from .modes import vim as vim_module
 from .modes.browser import BrowserRecorder
-from .modes.terminal import TerminalRecorder
+from .modes.terminal import TerminalRecorder, TerminalSessionManager
 from .parser import Plan, Segment
 from .tts import get_audio_duration, get_tts_engine
 
@@ -45,6 +45,8 @@ class Runner:
         self.segment_files: list[Path] = []
         self.timed_narrations: list[TimedNarration] = []
         self.has_narration = any(seg.narrations for seg in plan.segments)
+        # Session manager for persistent terminal sessions across mode switches
+        self._session_manager = TerminalSessionManager()
 
     def _uses_vim_primitives(self) -> bool:
         """Check if any segment uses high-level vim primitives."""
@@ -180,7 +182,13 @@ class Runner:
         """Create appropriate recorder for segment mode."""
         base = dict(width=self.plan.width, height=self.plan.height, framerate=self.plan.framerate)
         if segment.mode == "terminal":
-            return TerminalRecorder(**base, size=segment.size, rows=segment.rows)
+            return TerminalRecorder(
+                **base,
+                size=segment.size,
+                rows=segment.rows,
+                session_manager=self._session_manager,
+                session_name=segment.session_name,
+            )
         return BrowserRecorder(**base)
 
     def _update_narration_times(self, timed_narrations: dict, timestamps: dict, offset: float):
@@ -220,6 +228,11 @@ class Runner:
         ]
 
     def cleanup(self):
-        """Remove temporary files."""
-        if self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir)
+        """Remove temporary files and stop all terminal sessions."""
+        # Stop terminal sessions first (must run even if temp cleanup fails)
+        try:
+            self._session_manager.cleanup()
+        finally:
+            # Remove temporary files
+            if self.temp_dir.exists():
+                shutil.rmtree(self.temp_dir)

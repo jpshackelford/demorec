@@ -34,6 +34,7 @@ class Segment:
     """A segment of commands in a single mode."""
 
     mode: Literal["terminal", "browser"]
+    session_name: str = "default"  # For terminal sessions (e.g., terminal:server)
     commands: list[Command] = field(default_factory=list)
     narrations: dict[int, Narration] = field(default_factory=dict)  # command_index -> narration
     # Terminal-specific settings
@@ -201,10 +202,35 @@ def _handle_set_directive(args: list[str], line_num: int, ctx: _ParseContext):
 
 
 def _handle_mode_switch(args: list[str], ctx: _ParseContext):
-    """Handle @mode directive to switch recording modes."""
-    if args and args[0].lower() in ("terminal", "browser"):
-        ctx.current_segment = Segment(mode=args[0].lower())
+    """Handle @mode directive to switch recording modes.
+
+    Supports optional session names for terminal mode:
+    - @mode terminal -> default session
+    - @mode terminal:server -> named "server" session
+    - @mode browser -> browser mode (session_name ignored)
+    """
+    if not args:
+        return
+
+    mode_spec = args[0].lower()
+    # Parse optional session name: terminal:server -> mode=terminal, session=server
+    if ":" in mode_spec:
+        mode, session_name = mode_spec.split(":", 1)
+        _validate_session_name(session_name)
+    else:
+        mode, session_name = mode_spec, "default"
+
+    if mode in ("terminal", "browser"):
+        ctx.current_segment = Segment(mode=mode, session_name=session_name)
         ctx.plan.segments.append(ctx.current_segment)
+
+
+def _validate_session_name(name: str) -> None:
+    """Validate session name is a valid identifier."""
+    if not name:
+        raise ValueError("Session name cannot be empty")
+    if not name.replace("_", "").replace("-", "").isalnum():
+        raise ValueError(f"Invalid session name: {name!r} (use alphanumeric, dash, underscore)")
 
 
 def _handle_terminal_directive(directive: str, args: list[str], ctx: _ParseContext) -> bool:

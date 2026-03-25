@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Demorec Demo - Agent Workflow Tools</title>
+    <title>Demorec Demo - Persistent Terminal Sessions</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -39,83 +39,75 @@
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
         th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #334155; }
         th { color: #00d4ff; font-weight: 600; }
-        .badge { 
-            display: inline-block; 
-            padding: 0.25rem 0.5rem; 
-            border-radius: 4px; 
-            font-size: 0.8rem;
-            background: #22c55e20;
-            color: #22c55e;
-        }
+        .problem-box { background: #7c2d12; border-left: 4px solid #fb923c; padding: 1rem; border-radius: 0 8px 8px 0; margin-bottom: 1.5rem; }
+        .solution-box { background: #14532d; border-left: 4px solid #22c55e; padding: 1rem; border-radius: 0 8px 8px 0; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎬 Demorec Demo</h1>
-        <p class="subtitle">Agent Workflow Tools for Vim-Based Code Review Demos</p>
+        <h1>🎬 Persistent Terminal Sessions</h1>
+        <p class="subtitle">PR #8: Never lose your terminal state again</p>
 
         <div class="video-container">
-            <video controls autoplay muted loop>
-                <source src="https://github.com/jpshackelford/demorec/raw/feat/agent-workflow-tools-v2/.pr/demo_video.mp4" type="video/mp4">
+            <video controls autoplay muted>
+                <source src="https://github.com/jpshackelford/demorec/raw/feature/persistent-terminal-sessions/.pr/demo_persistent_sessions.mp4" type="video/mp4">
                 Your browser does not support the video tag.
             </video>
         </div>
 
         <div class="info">
-            <h2>What This Demonstrates</h2>
-            <ul>
-                <li><span class="check">✓</span> Terminal mode with <code>@terminal:rows 30</code> directive</li>
-                <li><span class="check">✓</span> VHS-style terminal sizing via <code>term.fit()</code></li>
-                <li><span class="check">✓</span> Vim primitives: <code>Open</code>, <code>Highlight</code>, <code>Close</code></li>
-                <li><span class="check">✓</span> Automatic narration with <code>edge-tts</code></li>
-                <li><span class="check">✓</span> SRT subtitle generation</li>
-                <li><span class="check">✓</span> Clean video start (setup frames trimmed)</li>
-                <li><span class="check">✓</span> Timed audio mixing at correct timestamps</li>
-            </ul>
-            <div class="stats">
-                <div class="stat"><div class="stat-value">54s</div><div class="stat-label">Video Length</div></div>
-                <div class="stat"><div class="stat-value">30</div><div class="stat-label">Terminal Rows</div></div>
-                <div class="stat"><div class="stat-value">4</div><div class="stat-label">Highlights</div></div>
+            <h2>The Problem</h2>
+            <div class="problem-box">
+                When creating demos that switch between terminal and browser, you'd lose all terminal state—working directory, environment variables, running processes. Multi-terminal workflows (server + client) were impossible.
+            </div>
+            <h2>The Solution</h2>
+            <div class="solution-box">
+                <strong>Persistent Sessions:</strong> Terminal state now persists across mode switches. Switch to browser and back—your terminal is exactly where you left it.<br><br>
+                <strong>Named Sessions:</strong> Run multiple independent terminals simultaneously with <code>@mode terminal:server</code> and <code>@mode terminal:client</code>.
             </div>
         </div>
 
         <div class="section info">
-            <h2>New CLI Commands</h2>
-            <table>
-                <tr><th>Command</th><th>Purpose</th></tr>
-                <tr><td><code>demorec stage</code></td><td>Calculate optimal vim commands for displaying specific line ranges</td></tr>
-                <tr><td><code>demorec checkpoints</code></td><td>Analyze script to detect natural checkpoint locations</td></tr>
-                <tr><td><code>demorec preview</code></td><td>Run through script and verify checkpoints without recording</td></tr>
-            </table>
-        </div>
-
-        <div class="section info">
-            <h2>High-Level Vim Primitives</h2>
-            <table>
-                <tr><th>Command</th><th>Purpose</th></tr>
-                <tr><td><code>Open "file.py"</code></td><td>Open file in vim with line numbers enabled</td></tr>
-                <tr><td><code>Highlight "10-20"</code></td><td>Navigate to lines and select with visual mode</td></tr>
-                <tr><td><code>Goto 50</code></td><td>Jump to line 50 with centering</td></tr>
-                <tr><td><code>Close</code></td><td>Exit vim cleanly</td></tr>
-            </table>
-        </div>
-
-        <div class="section info">
-            <h2>Terminal Sizing</h2>
+            <h2>What This Demonstrates</h2>
             <ul>
-                <li><span class="check">✓</span> <code>@terminal:rows N</code> - Set explicit row count (10-100)</li>
-                <li><span class="check">✓</span> <code>@terminal:size large|medium|small|tiny</code> - Preset sizes</li>
-                <li><span class="check">✓</span> Automatic font scaling to achieve target rows</li>
-                <li><span class="check">✓</span> VHS-style <code>term.fit()</code> for PTY sync</li>
+                <li><span class="check">✓</span> <strong>Persistent Sessions (Issue #4):</strong> Set environment variables, switch to browser, return to terminal—state preserved</li>
+                <li><span class="check">✓</span> <strong>Named Sessions (Issue #5):</strong> Run HTTP server in <code>terminal:server</code>, make requests from <code>terminal:client</code></li>
+                <li><span class="check">✓</span> <strong>Session Independence:</strong> Default terminal, server, and client all maintain separate state</li>
+                <li><span class="check">✓</span> <strong>Mode Switching:</strong> 7 seamless segment transitions including browser view of the running server</li>
+            </ul>
+            <div class="stats">
+                <div class="stat"><div class="stat-value">108s</div><div class="stat-label">Video Length</div></div>
+                <div class="stat"><div class="stat-value">7</div><div class="stat-label">Segments</div></div>
+                <div class="stat"><div class="stat-value">3</div><div class="stat-label">Terminal Sessions</div></div>
+            </div>
+        </div>
+
+        <div class="section info">
+            <h2>New Syntax</h2>
+            <table>
+                <tr><th>Syntax</th><th>Description</th></tr>
+                <tr><td><code>@mode terminal</code></td><td>Default terminal session (state persists across mode switches)</td></tr>
+                <tr><td><code>@mode terminal:server</code></td><td>Named session "server" (independent from other sessions)</td></tr>
+                <tr><td><code>@mode terminal:client</code></td><td>Named session "client" (independent from other sessions)</td></tr>
+            </table>
+        </div>
+
+        <div class="section info">
+            <h2>Use Cases</h2>
+            <ul>
+                <li><span class="check">✓</span> <strong>Server/Client Demos:</strong> Start server, make requests from client, show both logs</li>
+                <li><span class="check">✓</span> <strong>Full-Stack Tutorials:</strong> Terminal → Browser → Terminal without losing context</li>
+                <li><span class="check">✓</span> <strong>Multi-Service Workflows:</strong> Run database, backend, and frontend in separate sessions</li>
+                <li><span class="check">✓</span> <strong>Long-Running Processes:</strong> Keep processes running while recording other parts of the demo</li>
             </ul>
         </div>
 
         <p style="text-align: center; margin-top: 2rem; color: #666;">
-            <a href="https://github.com/jpshackelford/demorec/compare/feat/agent-workflow-tools-v2" style="color: #00d4ff;">View PR</a>
+            <a href="https://github.com/jpshackelford/demorec/pull/8" style="color: #00d4ff;">View PR #8</a>
             &nbsp;|&nbsp;
-            <a href="https://github.com/jpshackelford/demorec/raw/feat/agent-workflow-tools-v2/.pr/demo_video.mp4" style="color: #00d4ff;">Download Video</a>
+            <a href="https://github.com/jpshackelford/demorec/raw/feature/persistent-terminal-sessions/.pr/demo_persistent_sessions.mp4" style="color: #00d4ff;">Download Video</a>
             &nbsp;|&nbsp;
-            <a href="https://github.com/jpshackelford/demorec/blob/feat/agent-workflow-tools-v2/examples/video2_primitives.demorec" style="color: #00d4ff;">Demo Source</a>
+            <a href="https://github.com/jpshackelford/demorec/blob/feature/persistent-terminal-sessions/demo_persistent_sessions.demorec" style="color: #00d4ff;">Demo Script</a>
         </p>
     </div>
 </body>

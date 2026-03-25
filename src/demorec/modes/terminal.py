@@ -2,6 +2,8 @@
 
 Uses ttyd to create a real PTY connected to xterm.js in a browser,
 enabling full ANSI support, interactive commands, spinners, etc.
+
+Supports persistent sessions across mode switches and multiple named sessions.
 """
 
 import asyncio
@@ -10,11 +12,126 @@ import time
 from pathlib import Path
 
 from ..parser import Command, Segment
-from ..ttyd import check_ttyd, find_free_port, stop_ttyd
+from ..ttyd import check_ttyd, ensure_tmux_session, find_free_port, start_ttyd, stop_ttyd
 from ..xterm import TerminalConfig, fit_to_rows, setup_terminal
 from . import CommandExecutorMixin
 from .terminal_commands import TERMINAL_COMMANDS, THEMES
 from .vim import VimCommandExpander
+
+
+class TerminalSession:
+    """Manages a single persistent terminal session via ttyd + tmux.
+
+    The session persists across multiple recording segments, preserving
+    working directory, environment variables, and terminal history.
+    Uses tmux under the hood so that reconnecting to ttyd attaches to
+    the same shell session.
+    """
+
+    def __init__(self, name: str = "default"):
+        self.name = name
+        self.port = find_free_port()
+        self._process: subprocess.Popen | None = None
+
+    def start(self) -> None:
+        """Start the ttyd process for this session.
+
+        If the process died, gets a new port to avoid conflicts.
+        Uses tmux for session persistence across browser reconnections.
+        """
+        if self.is_running():
+            return
+        if not check_ttyd():
+            from ..ttyd import find_ttyd
+
+            find_ttyd()  # Raises with install instructions
+        # Get fresh port if restarting (old port may be taken)
+        if self._process is not None:
+            self.port = find_free_port()
+        # Ensure tmux session exists before starting ttyd
+        ensure_tmux_session(self.name)
+        self._process = start_ttyd(self.port, session_name=self.name)
+
+    def stop(self) -> None:
+        """Stop the ttyd process and kill the tmux session."""
+        if self._process:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+            self._process = None
+        # Also kill the tmux session
+        tmux_session = f"demorec-{self.name}"
+        subprocess.run(
+            ["tmux", "kill-session", "-t", tmux_session],
+            capture_output=True,
+        )
+
+    def is_running(self) -> bool:
+        """Check if the ttyd process is still running.
+
+        This is the source of truth for session state.
+        """
+        if self._process is None:
+            return False
+        return self._process.poll() is None
+
+    def __repr__(self) -> str:
+        status = "running" if self.is_running() else "stopped"
+        return f"TerminalSession(name={self.name!r}, port={self.port}, {status})"
+
+
+class TerminalSessionManager:
+    """Manages multiple named terminal sessions.
+
+    Sessions persist for the lifetime of the manager, allowing terminal
+    state to be preserved across mode switches (terminal -> browser -> terminal).
+
+    Example:
+        manager = TerminalSessionManager()
+        server = manager.get_or_create("server")  # Creates new session
+        client = manager.get_or_create("client")  # Creates another session
+        server2 = manager.get_or_create("server") # Returns existing session
+        manager.cleanup()  # Stops all sessions
+    """
+
+    def __init__(self):
+        self._sessions: dict[str, TerminalSession] = {}
+
+    def get_or_create(self, name: str = "default") -> TerminalSession:
+        """Get an existing session or create a new one.
+
+        Args:
+            name: Session name (e.g., "default", "server", "client")
+
+        Returns:
+            The terminal session, started and ready to use.
+        """
+        if name not in self._sessions:
+            session = TerminalSession(name)
+            session.start()
+            self._sessions[name] = session
+
+        session = self._sessions[name]
+
+        # Restart if session died
+        if not session.is_running():
+            session.start()
+
+        return session
+
+    def cleanup(self) -> None:
+        """Stop all terminal sessions."""
+        for session in self._sessions.values():
+            session.stop()
+        self._sessions.clear()
+
+    def __len__(self) -> int:
+        return len(self._sessions)
+
+    def __repr__(self) -> str:
+        return f"TerminalSessionManager({list(self._sessions.keys())})"
 
 
 class TerminalRecorder(CommandExecutorMixin):
@@ -22,6 +139,9 @@ class TerminalRecorder(CommandExecutorMixin):
 
     Uses ttyd to create a real PTY connected to xterm.js in a browser,
     enabling full ANSI support, interactive commands, spinners, colors, etc.
+
+    Supports persistent sessions via TerminalSessionManager, preserving
+    terminal state across mode switches.
     """
 
     # Size presets: name -> target rows (for 720p viewport)
@@ -39,11 +159,15 @@ class TerminalRecorder(CommandExecutorMixin):
         framerate: int = 30,
         size: str | None = None,
         rows: int | None = None,
+        session_manager: TerminalSessionManager | None = None,
+        session_name: str = "default",
     ):
         self._init_dimensions(width, height, framerate)
         self._init_theme_settings()
         self._init_row_settings(size, rows)
         self._vim_expander = VimCommandExpander(terminal_rows=self.desired_rows or 24)
+        self.session_manager = session_manager
+        self.session_name = session_name
 
     def _init_dimensions(self, width: int, height: int, framerate: int):
         """Initialize dimension settings."""
@@ -198,7 +322,7 @@ class TerminalRecorder(CommandExecutorMixin):
         if result.returncode != 0:
             raise RuntimeError(f"FFmpeg conversion failed: {result.stderr}")
 
-    def _build_convert_cmd(  # length-ok
+    def _build_convert_cmd(  # length-ok: ffmpeg args must be in specific order
         self, webm_path: Path, mp4_path: Path, trim_start: float
     ) -> list:
         """Build FFmpeg conversion command."""
@@ -220,19 +344,29 @@ class TerminalRecorder(CommandExecutorMixin):
             str(mp4_path),
         ]
 
-    async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
-        """Record terminal session using ttyd and Playwright."""
-        self._apply_theme_from_segment(segment)
+    async def _setup_session(self) -> tuple[int, bool]:
+        """Set up terminal session and return (port, owns_session)."""
+        if self.session_manager is not None:
+            session = self.session_manager.get_or_create(self.session_name)
+            await asyncio.sleep(0.3)
+            return session.port, False
         port = find_free_port()
         self._start_ttyd(port)
         await asyncio.sleep(0.5)
+        return port, True
 
+    async def _record_async(  # length-ok: atomic setup/record/teardown transaction
+        self, segment: Segment, output: Path
+    ) -> dict[int, tuple[float, float]]:
+        """Record terminal session using ttyd and Playwright."""
+        self._apply_theme_from_segment(segment)
+        port, owns_session = await self._setup_session()
         try:
-            timestamps, setup_duration = await self._run_browser_session(segment, output, port)
+            timestamps, setup_dur = await self._run_browser_session(segment, output, port)
         finally:
-            self._cleanup_ttyd()
-
-        self._finalize_video(output, trim_start=setup_duration)
+            if owns_session:
+                self._cleanup_ttyd()
+        self._finalize_video(output, trim_start=setup_dur)
         return timestamps
 
     async def _send_keys(self, page, text: str, delay: float = None):

@@ -45,23 +45,23 @@ class PresentationRecorder(CommandExecutorMixin):
         return asyncio.run(self._record_async(segment, output))
 
     async def _record_async(self, segment: Segment, output: Path) -> dict:
-        from playwright.async_api import async_playwright
-
         self._html_path = render_to_html(
-            segment.presentation_file,
-            output.parent,
-            theme=segment.presentation_theme,
+            segment.presentation_file, output.parent, theme=segment.presentation_theme
         )
+        timestamps = await self._record_with_playwright(segment, output)
+        self._finalize_video(output)
+        return timestamps
+
+    async def _record_with_playwright(self, segment: Segment, output: Path) -> dict:
+        """Run Playwright recording session."""
+        from playwright.async_api import async_playwright
 
         async with async_playwright() as p:
             context, page = await self._create_browser_context(p, output)
             await page.goto(f"file://{self._html_path}", wait_until="load")
             await asyncio.sleep(0.5)
-
             timestamps = await self._execute_commands_with_timing(page, segment)
             await context.close()
-
-        self._finalize_video(output)
         return timestamps
 
     async def _create_browser_context(self, playwright, output: Path):

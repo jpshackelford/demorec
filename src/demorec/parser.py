@@ -193,47 +193,57 @@ def _handle_set_directive(args: list[str], line_num: int, ctx: _ParseContext):
     if len(args) < 2:
         return
     key, val = args[0].lower(), args[1]
-    setters = {
-        "width": lambda: setattr(ctx.plan, "width", int(val)),
-        "height": lambda: setattr(ctx.plan, "height", int(val)),
-        "framerate": lambda: setattr(ctx.plan, "framerate", int(val)),
-    }
+    if not _try_set_plan_attr(key, val, ctx.plan):
+        _handle_set_theme(val, line_num, ctx)
+
+
+def _try_set_plan_attr(key: str, val: str, plan: Plan) -> bool:
+    """Try to set a plan attribute. Returns True if handled."""
+    setters = {"width": int, "height": int, "framerate": int}
     if key in setters:
-        setters[key]()
-    elif key == "theme" and ctx.current_segment:
-        if ctx.current_segment.mode == "presentation":
-            ctx.current_segment.presentation_theme = val
-        else:
-            ctx.current_segment.commands.append(Command("SetTheme", [val], line_num))
+        setattr(plan, key, setters[key](val))
+        return True
+    return False
+
+
+def _handle_set_theme(val: str, line_num: int, ctx: _ParseContext):
+    """Handle Set Theme for current segment."""
+    if not ctx.current_segment:
+        return
+    if ctx.current_segment.mode == "presentation":
+        ctx.current_segment.presentation_theme = val
+    else:
+        ctx.current_segment.commands.append(Command("SetTheme", [val], line_num))
 
 
 def _handle_mode_switch(args: list[str], ctx: _ParseContext):
-    """Handle @mode directive to switch recording modes.
-
-    Supports optional session names for terminal mode:
-    - @mode terminal -> default session
-    - @mode terminal:server -> named "server" session
-    - @mode browser -> browser mode (session_name ignored)
-    - @mode presentation "file.md" -> presentation mode with Marp slides
-    """
+    """Handle @mode directive to switch recording modes."""
     if not args:
         return
+    mode, session_name = _parse_mode_spec(args[0].lower())
+    segment = _create_mode_segment(mode, session_name, args)
+    if segment:
+        ctx.current_segment = segment
+        ctx.plan.segments.append(segment)
 
-    mode_spec = args[0].lower()
-    # Parse optional session name: terminal:server -> mode=terminal, session=server
+
+def _parse_mode_spec(mode_spec: str) -> tuple[str, str]:
+    """Parse mode spec like 'terminal:server' into (mode, session_name)."""
     if ":" in mode_spec:
         mode, session_name = mode_spec.split(":", 1)
         _validate_session_name(session_name)
-    else:
-        mode, session_name = mode_spec, "default"
+        return mode, session_name
+    return mode_spec, "default"
 
+
+def _create_mode_segment(mode: str, session_name: str, args: list[str]) -> Segment | None:
+    """Create a segment for the given mode."""
     if mode in ("terminal", "browser"):
-        ctx.current_segment = Segment(mode=mode, session_name=session_name)
-        ctx.plan.segments.append(ctx.current_segment)
-    elif mode == "presentation":
+        return Segment(mode=mode, session_name=session_name)
+    if mode == "presentation":
         file_path = parse_string(args[1]) if len(args) > 1 else None
-        ctx.current_segment = Segment(mode="presentation", presentation_file=file_path)
-        ctx.plan.segments.append(ctx.current_segment)
+        return Segment(mode="presentation", presentation_file=file_path)
+    return None
 
 
 def _validate_session_name(name: str) -> None:

@@ -8,16 +8,16 @@ Tests cover:
 - Frame capture functionality
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
-import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from demorec.preview import (
     CheckpointResult,
     PreviewResult,
-    TerminalPreviewer,
     ScriptPreviewer,
+    TerminalPreviewer,
 )
 from demorec.stage import Checkpoint
 
@@ -118,15 +118,19 @@ class TestTerminalPreviewerHelpers:
 
     def test_setup_screenshot_dir_never(self):
         """Should return None when screenshots='never'."""
+        from demorec.frame_capture import setup_screenshot_dir
+
         previewer = TerminalPreviewer(screenshots="never")
-        result = previewer._setup_screenshot_dir(None)
+        result = setup_screenshot_dir(previewer._state, None)
         assert result is None
 
     def test_setup_screenshot_dir_with_output(self):
         """Should use provided output directory."""
+        from demorec.frame_capture import setup_screenshot_dir
+
         previewer = TerminalPreviewer(screenshots="on_error")
         with patch.object(Path, "mkdir"):
-            result = previewer._setup_screenshot_dir(Path("/custom/dir"))
+            result = setup_screenshot_dir(previewer._state, Path("/custom/dir"))
             assert result == Path("/custom/dir")
 
     def test_build_checkpoint_result(self):
@@ -206,21 +210,24 @@ class TestTerminalPreviewerHelpers:
 
     def test_parse_duration_seconds(self):
         """Should parse seconds duration."""
-        previewer = TerminalPreviewer()
-        assert previewer._parse_duration("1s") == 1.0
-        assert previewer._parse_duration("0.5s") == 0.5
-        assert previewer._parse_duration("2.5s") == 2.5
+        from demorec.frame_capture import parse_duration
+
+        assert parse_duration("1s") == 1.0
+        assert parse_duration("0.5s") == 0.5
+        assert parse_duration("2.5s") == 2.5
 
     def test_parse_duration_milliseconds(self):
         """Should parse milliseconds duration."""
-        previewer = TerminalPreviewer()
-        assert previewer._parse_duration("500ms") == 0.5
-        assert previewer._parse_duration("1000ms") == 1.0
+        from demorec.frame_capture import parse_duration
+
+        assert parse_duration("500ms") == 0.5
+        assert parse_duration("1000ms") == 1.0
 
     def test_parse_duration_plain_number(self):
         """Should parse plain number as seconds."""
-        previewer = TerminalPreviewer()
-        assert previewer._parse_duration("2") == 2.0
+        from demorec.frame_capture import parse_duration
+
+        assert parse_duration("2") == 2.0
 
 
 class TestTerminalPreviewerTypeCommands:
@@ -328,18 +335,14 @@ class TestTerminalPreviewerScreenshots:
     async def test_maybe_screenshot_never(self):
         """Should not screenshot when mode is 'never'."""
         previewer = TerminalPreviewer(screenshots="never")
-        result = await previewer._maybe_screenshot(
-            MagicMock(), Path("/tmp"), 1, "test", False
-        )
+        result = await previewer._maybe_screenshot(MagicMock(), Path("/tmp"), 1, "test", False)
         assert result is None
 
     @pytest.mark.asyncio
     async def test_maybe_screenshot_on_error_passed(self):
         """Should not screenshot on_error when passed."""
         previewer = TerminalPreviewer(screenshots="on_error")
-        result = await previewer._maybe_screenshot(
-            MagicMock(), Path("/tmp"), 1, "test", True
-        )
+        result = await previewer._maybe_screenshot(MagicMock(), Path("/tmp"), 1, "test", True)
         assert result is None
 
     @pytest.mark.asyncio
@@ -347,9 +350,7 @@ class TestTerminalPreviewerScreenshots:
         """Should screenshot on_error when failed."""
         previewer = TerminalPreviewer(screenshots="on_error")
         mock_page = AsyncMock()
-        result = await previewer._maybe_screenshot(
-            mock_page, Path("/tmp"), 1, "test", False
-        )
+        result = await previewer._maybe_screenshot(mock_page, Path("/tmp"), 1, "test", False)
         assert result == Path("/tmp/checkpoint_1_test.png")
         mock_page.screenshot.assert_called_once()
 
@@ -358,9 +359,7 @@ class TestTerminalPreviewerScreenshots:
         """Should screenshot when mode is 'always'."""
         previewer = TerminalPreviewer(screenshots="always")
         mock_page = AsyncMock()
-        result = await previewer._maybe_screenshot(
-            mock_page, Path("/tmp"), 1, "test", True
-        )
+        result = await previewer._maybe_screenshot(mock_page, Path("/tmp"), 1, "test", True)
         assert result is not None
         mock_page.screenshot.assert_called_once()
 
@@ -421,7 +420,7 @@ class TestTerminalPreviewerDispatch:
         previewer = TerminalPreviewer()
         mock_page = AsyncMock()
         cmd = Command("Sleep", ["0.01s"])
-        
+
         # Should not raise and should complete quickly
         await previewer._dispatch_command(mock_page, cmd)
 
@@ -463,8 +462,8 @@ class TestTerminalPreviewerFrameCapture:
         """Should initialize with capture_frames flag."""
         previewer = TerminalPreviewer(capture_frames=True)
         assert previewer.capture_frames is True
-        assert previewer._frame_counter == 0
-        assert previewer._start_time is None
+        assert previewer._state.frame_counter == 0
+        assert previewer._state.start_time is None
 
     def test_init_without_capture_frames(self):
         """Should default capture_frames to False."""
@@ -473,38 +472,48 @@ class TestTerminalPreviewerFrameCapture:
 
     def test_setup_frames_dir_disabled(self):
         """Should not set up frames dir when capture disabled."""
+        from demorec.frame_capture import setup_frames_dir
+
         previewer = TerminalPreviewer(capture_frames=False)
-        previewer._setup_frames_dir(Path("/tmp/frames"))
-        assert previewer._frames_dir is None
+        setup_frames_dir(previewer._state, Path("/tmp/frames"))
+        assert previewer._state.frames_dir is None
 
     def test_setup_frames_dir_no_output(self):
         """Should not set up frames dir when no output dir provided."""
+        from demorec.frame_capture import setup_frames_dir
+
         previewer = TerminalPreviewer(capture_frames=True)
-        previewer._setup_frames_dir(None)
-        assert previewer._frames_dir is None
+        setup_frames_dir(previewer._state, None)
+        assert previewer._state.frames_dir is None
 
     def test_setup_frames_dir_enabled(self):
         """Should set up frames dir when enabled with output dir."""
+        from demorec.frame_capture import setup_frames_dir
+
         previewer = TerminalPreviewer(capture_frames=True)
         with patch.object(Path, "mkdir"):
-            previewer._setup_frames_dir(Path("/tmp/frames"))
-        assert previewer._frames_dir == Path("/tmp/frames")
-        assert previewer._frame_counter == 0
+            setup_frames_dir(previewer._state, Path("/tmp/frames"))
+        assert previewer._state.frames_dir == Path("/tmp/frames")
+        assert previewer._state.frame_counter == 0
 
     @pytest.mark.asyncio
-    async def test_capture_terminal_frame_disabled(self):
+    async def test_capture_frame_disabled(self):
         """Should return None when frame capture is disabled."""
+        from demorec.frame_capture import capture_frame
+
         previewer = TerminalPreviewer(capture_frames=False)
-        result = await previewer._capture_terminal_frame(MagicMock())
+        result = await capture_frame(previewer._state, MagicMock(), "terminal")
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_capture_terminal_frame_no_start_time(self):
+    async def test_capture_frame_no_start_time(self):
         """Should return None when start time not set."""
+        from demorec.frame_capture import capture_frame
+
         previewer = TerminalPreviewer(capture_frames=True)
-        previewer._frames_dir = Path("/tmp/frames")
-        previewer._start_time = None
-        result = await previewer._capture_terminal_frame(MagicMock())
+        previewer._state.frames_dir = Path("/tmp/frames")
+        previewer._state.start_time = None
+        result = await capture_frame(previewer._state, MagicMock(), "terminal")
         assert result is None
 
 
@@ -541,59 +550,72 @@ class TestScriptPreviewerHelpers:
 
     def test_setup_frames_dir_enabled(self):
         """Should set up frames directory when enabled."""
+        from demorec.frame_capture import setup_frames_dir
+
         previewer = ScriptPreviewer(capture_frames=True)
         with patch.object(Path, "mkdir"):
-            previewer._setup_frames_dir(Path("/tmp/frames"))
-        assert previewer._frames_dir == Path("/tmp/frames")
-        assert previewer._frame_counter == 0
+            setup_frames_dir(previewer._state, Path("/tmp/frames"))
+        assert previewer._state.frames_dir == Path("/tmp/frames")
+        assert previewer._state.frame_counter == 0
 
     def test_setup_frames_dir_disabled(self):
         """Should not set up frames directory when disabled."""
+        from demorec.frame_capture import setup_frames_dir
+
         previewer = ScriptPreviewer(capture_frames=False)
-        previewer._setup_frames_dir(Path("/tmp/frames"))
-        assert previewer._frames_dir is None
+        setup_frames_dir(previewer._state, Path("/tmp/frames"))
+        assert previewer._state.frames_dir is None
 
     def test_setup_screenshot_dir_never(self):
         """Should return None when screenshots='never'."""
+        from demorec.frame_capture import setup_screenshot_dir
+
         previewer = ScriptPreviewer(screenshots="never")
-        result = previewer._setup_screenshot_dir(None)
+        result = setup_screenshot_dir(previewer._state, None)
         assert result is None
 
     def test_setup_screenshot_dir_with_output(self):
         """Should use provided output directory."""
+        from demorec.frame_capture import setup_screenshot_dir
+
         previewer = ScriptPreviewer(screenshots="on_error")
         with patch.object(Path, "mkdir"):
-            result = previewer._setup_screenshot_dir(Path("/custom/dir"))
+            result = setup_screenshot_dir(previewer._state, Path("/custom/dir"))
         assert result == Path("/custom/dir")
 
     def test_build_preview_result_with_frames(self):
         """Should include frame info in result."""
+        from demorec.preview import build_preview_result
+
         previewer = ScriptPreviewer(capture_frames=True)
-        previewer._frame_counter = 15
-        previewer._frames_dir = Path("/tmp/frames")
-        
-        result = previewer._build_preview_result([], None)
-        
+        previewer._state.frame_counter = 15
+        previewer._state.frames_dir = Path("/tmp/frames")
+
+        result = build_preview_result([], None, previewer._state)
+
         assert result.frame_count == 15
         assert result.frames_dir == Path("/tmp/frames")
 
     def test_parse_duration_seconds(self):
         """Should parse seconds duration."""
-        previewer = ScriptPreviewer()
-        assert previewer._parse_duration("1s") == 1.0
-        assert previewer._parse_duration("0.5s") == 0.5
-        assert previewer._parse_duration("2.5s") == 2.5
+        from demorec.frame_capture import parse_duration
+
+        assert parse_duration("1s") == 1.0
+        assert parse_duration("0.5s") == 0.5
+        assert parse_duration("2.5s") == 2.5
 
     def test_parse_duration_milliseconds(self):
         """Should parse milliseconds duration."""
-        previewer = ScriptPreviewer()
-        assert previewer._parse_duration("500ms") == 0.5
-        assert previewer._parse_duration("1000ms") == 1.0
+        from demorec.frame_capture import parse_duration
+
+        assert parse_duration("500ms") == 0.5
+        assert parse_duration("1000ms") == 1.0
 
     def test_parse_duration_plain_number(self):
         """Should parse plain number as seconds."""
-        previewer = ScriptPreviewer()
-        assert previewer._parse_duration("2") == 2.0
+        from demorec.frame_capture import parse_duration
+
+        assert parse_duration("2") == 2.0
 
 
 class TestScriptPreviewerFrameCapture:
@@ -602,17 +624,21 @@ class TestScriptPreviewerFrameCapture:
     @pytest.mark.asyncio
     async def test_capture_frame_disabled(self):
         """Should return None when frame capture is disabled."""
+        from demorec.frame_capture import capture_frame
+
         previewer = ScriptPreviewer(capture_frames=False)
-        result = await previewer._capture_frame(MagicMock(), "terminal")
+        result = await capture_frame(previewer._state, MagicMock(), "terminal")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_capture_frame_no_start_time(self):
         """Should return None when start time not set."""
+        from demorec.frame_capture import capture_frame
+
         previewer = ScriptPreviewer(capture_frames=True)
-        previewer._frames_dir = Path("/tmp/frames")
-        previewer._start_time = None
-        result = await previewer._capture_frame(MagicMock(), "terminal")
+        previewer._state.frames_dir = Path("/tmp/frames")
+        previewer._state.start_time = None
+        result = await capture_frame(previewer._state, MagicMock(), "terminal")
         assert result is None
 
     @pytest.mark.asyncio
@@ -620,38 +646,42 @@ class TestScriptPreviewerFrameCapture:
         """Should increment frame counter on capture."""
         import tempfile
         import time
-        
+
+        from demorec.frame_capture import capture_frame
+
         previewer = ScriptPreviewer(capture_frames=True)
         with tempfile.TemporaryDirectory() as tmpdir:
-            previewer._frames_dir = Path(tmpdir)
-            previewer._start_time = time.time()
-            previewer._frame_counter = 0
-            
+            previewer._state.frames_dir = Path(tmpdir)
+            previewer._state.start_time = time.time()
+            previewer._state.frame_counter = 0
+
             # Mock page for browser screenshot
             mock_page = AsyncMock()
-            
-            await previewer._capture_frame(mock_page, "browser")
-            assert previewer._frame_counter == 1
-            
-            await previewer._capture_frame(mock_page, "browser")
-            assert previewer._frame_counter == 2
+
+            await capture_frame(previewer._state, mock_page, "browser")
+            assert previewer._state.frame_counter == 1
+
+            await capture_frame(previewer._state, mock_page, "browser")
+            assert previewer._state.frame_counter == 2
 
     @pytest.mark.asyncio
     async def test_capture_browser_frame_creates_png(self):
         """Should create PNG file for browser frame."""
         import tempfile
         import time
-        
+
+        from demorec.frame_capture import capture_frame
+
         previewer = ScriptPreviewer(capture_frames=True)
         with tempfile.TemporaryDirectory() as tmpdir:
-            previewer._frames_dir = Path(tmpdir)
-            previewer._start_time = time.time()
-            previewer._frame_counter = 0
-            
+            previewer._state.frames_dir = Path(tmpdir)
+            previewer._state.start_time = time.time()
+            previewer._state.frame_counter = 0
+
             mock_page = AsyncMock()
-            
-            result = await previewer._capture_frame(mock_page, "browser")
-            
+
+            result = await capture_frame(previewer._state, mock_page, "browser")
+
             assert result is not None
             assert result.suffix == ".png"
             assert "frame_0001_" in result.name
@@ -662,32 +692,35 @@ class TestScriptPreviewerFrameCapture:
         """Should create TXT file for terminal frame."""
         import tempfile
         import time
-        
+
+        from demorec.frame_capture import capture_frame
+
         previewer = ScriptPreviewer(capture_frames=True)
         with tempfile.TemporaryDirectory() as tmpdir:
-            previewer._frames_dir = Path(tmpdir)
-            previewer._start_time = time.time()
-            previewer._frame_counter = 0
-            
+            previewer._state.frames_dir = Path(tmpdir)
+            previewer._state.start_time = time.time()
+            previewer._state.frame_counter = 0
+
             mock_page = AsyncMock()
-            
+
             # Mock get_buffer_state
             from demorec.xterm import BufferState
+
             mock_buffer = BufferState(
                 rows=30,
                 cols=80,
                 viewport_y=0,
                 visible_lines=["line 1", "line 2", "line 3"],
             )
-            
-            with patch("demorec.preview.get_buffer_state", return_value=mock_buffer):
-                result = await previewer._capture_frame(mock_page, "terminal")
-            
+
+            with patch("demorec.frame_capture.get_buffer_state", return_value=mock_buffer):
+                result = await capture_frame(previewer._state, mock_page, "terminal")
+
             assert result is not None
             assert result.suffix == ".txt"
             assert "frame_0001_" in result.name
             assert result.exists()
-            
+
             content = result.read_text()
             assert "line 1" in content
             assert "line 2" in content

@@ -200,8 +200,13 @@ demorec preview script.demorec --rows 30 -o ./frames
 - `SSS.ss`: Elapsed seconds with 2 decimals (000.00, 001.25, ...)
 
 **Key Classes:**
-- `TerminalPreviewer` - Single terminal segment with checkpoints
+- `TerminalPreviewer` - Terminal-only scripts with checkpoint verification
 - `ScriptPreviewer` - Multi-segment (terminal + browser) with frame capture
+- `FrameCaptureState` - Shared state for frame capture (in `frame_capture.py`)
+
+**CLI Behavior:**
+- Terminal-only scripts: Uses `TerminalPreviewer` with checkpoint verification
+- Scripts with browser segments: Uses `ScriptPreviewer` for multi-segment support
 
 **CLI Flags:**
 - `--output-dir / -o` - Enable frame capture to directory

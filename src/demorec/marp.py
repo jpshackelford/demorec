@@ -27,29 +27,21 @@ def is_url(path: str) -> bool:
     return path.startswith(("http://", "https://"))
 
 
+def _check_content_length(response) -> None:
+    """Validate response Content-Length is within limits."""
+    content_length = response.headers.get("Content-Length")
+    if content_length and int(content_length) > DOWNLOAD_MAX_SIZE_BYTES:
+        raise ValueError(f"File too large: {content_length} bytes (max {DOWNLOAD_MAX_SIZE_BYTES})")
+
+
 def download_file(url: str, output_dir: Path, filename: str | None = None) -> Path:
-    """Download a file from URL to local path with security limits.
-
-    Args:
-        url: HTTP(S) URL to download
-        output_dir: Directory to save the file
-        filename: Optional filename (extracted from URL if not provided)
-
-    Raises:
-        ValueError: If file exceeds size limit
-        RuntimeError: If download fails
-    """
+    """Download a file from URL to local path with security limits."""
     if filename is None:
         filename = Path(urlparse(url).path).name or "downloaded_file"
-
     output_path = output_dir / filename
     try:
         with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
-            content_length = response.headers.get("Content-Length")
-            if content_length and int(content_length) > DOWNLOAD_MAX_SIZE_BYTES:
-                raise ValueError(
-                    f"File too large: {content_length} bytes (max {DOWNLOAD_MAX_SIZE_BYTES})"
-                )
+            _check_content_length(response)
             output_path.write_bytes(response.read())
     except urllib.error.URLError as e:
         raise RuntimeError(f"Failed to download {url}: {e}") from e

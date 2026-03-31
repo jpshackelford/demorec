@@ -1,5 +1,9 @@
 # Example: Mixed presentation and terminal demo
 # This demonstrates using Marp slides with live terminal demos
+#
+# NOTE: Set Theme works differently depending on the current mode:
+#   - In presentation mode: Sets the Marp CSS theme (local file, URL, or alias like "openhands")
+#   - In terminal mode: Sets the terminal color theme (e.g., "Dracula", "Monokai")
 
 Output presentation_demo.mp4
 Set Width 1920
@@ -12,6 +16,7 @@ Set Height 1080
 # Using OpenHands theme from GitHub URL
 # ─────────────────────────────────────
 @mode presentation "https://raw.githubusercontent.com/jpshackelford/marp-intro/main/examples/openhands-intro/openhands-intro.md"
+# Set Theme in presentation mode: applies Marp CSS theme
 Set Theme "openhands"
 
 # @narrate:during "Welcome to OpenHands, the open source AI coding agent."

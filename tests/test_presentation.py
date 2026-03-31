@@ -121,6 +121,38 @@ class TestMarpModule:
         assert not is_url("/path/to/slides.md")
         assert not is_url("./slides.md")
 
+    def test_download_security_constants(self):
+        """Test that security constants are defined."""
+        from demorec.marp import DOWNLOAD_MAX_SIZE_BYTES, DOWNLOAD_TIMEOUT_SECONDS
+
+        assert DOWNLOAD_TIMEOUT_SECONDS == 30
+        assert DOWNLOAD_MAX_SIZE_BYTES == 100_000_000  # 100MB
+
+    def test_validate_path_arg_null_bytes(self):
+        """Test that null bytes in paths are rejected."""
+        from demorec.marp import _validate_path_arg
+
+        with pytest.raises(ValueError, match="null bytes"):
+            _validate_path_arg("/path/with\x00null", "Test path")
+
+    def test_validate_path_arg_empty(self):
+        """Test that empty paths are rejected."""
+        from demorec.marp import _validate_path_arg
+
+        with pytest.raises(ValueError, match="empty"):
+            _validate_path_arg("", "Test path")
+        with pytest.raises(ValueError, match="empty"):
+            _validate_path_arg("   ", "Test path")
+
+    def test_validate_path_arg_valid(self):
+        """Test that valid paths pass validation."""
+        from demorec.marp import _validate_path_arg
+
+        # Should not raise
+        _validate_path_arg("/valid/path.md", "Test path")
+        _validate_path_arg("relative/path.css", "Test path")
+        _validate_path_arg("https://example.com/theme.css", "Test path")
+
     def test_theme_aliases(self):
         """Test theme alias resolution."""
         from demorec.marp import THEME_ALIASES, resolve_theme
@@ -175,51 +207,77 @@ class TestPresentationRecorder:
         assert recorder.height == 1080
         assert recorder.framerate == 30
 
-    def test_smart_wait_narration_longer(self):
+    @pytest.mark.asyncio
+    async def test_smart_wait_narration_longer(self):
         """Test smart wait when narration is longer than min_time."""
+        import time
+
         from demorec.modes.presentation import PresentationRecorder
         from demorec.parser import Command
 
         recorder = PresentationRecorder()
 
-        # Mock a narration that's 5 seconds
+        # Mock a narration (using short durations for fast tests)
         class MockNarration:
             mode = "during"
-            duration = 5.0
+            duration = 0.3
 
         recorder._timed_narrations = {0: MockNarration()}
 
-        cmd = Command("Slide", ["1", "2s"])
+        # min_time (0.1s) < narration (0.3s) + padding (0.5s) = 0.8s
+        cmd = Command("Slide", ["1", "0.1s"])
 
-        import asyncio
+        start = time.time()
+        await recorder._smart_wait(cmd, 0)
+        elapsed = time.time() - start
 
-        async def test():
-            import time
+        # Should wait ~0.8s (narration + padding), not 0.1s
+        assert elapsed >= 0.3, f"Expected >= 0.3s, got {elapsed:.2f}s"
 
-            start = time.time()
-            await recorder._smart_wait(cmd, 0)
-            elapsed = time.time() - start
-            # Should wait ~5.5s (narration + padding), not 2s
-            assert elapsed >= 5.0
-
-        # Skip actual async test in unit tests - would need mock
-        # asyncio.run(test())
-
-    def test_smart_wait_min_time_longer(self):
+    @pytest.mark.asyncio
+    async def test_smart_wait_min_time_longer(self):
         """Test smart wait when min_time is longer than narration."""
+        import time
+
         from demorec.modes.presentation import PresentationRecorder
         from demorec.parser import Command
 
         recorder = PresentationRecorder()
 
-        # Mock a narration that's 1 second
+        # Mock a short narration
         class MockNarration:
             mode = "during"
-            duration = 1.0
+            duration = 0.1
 
         recorder._timed_narrations = {0: MockNarration()}
 
-        cmd = Command("Slide", ["1", "5s"])
+        # min_time (0.5s) > narration (0.1s) + padding (0.5s) = 0.6s
+        # Actually 0.5 < 0.6, so let's use 0.8s as min_time
+        cmd = Command("Slide", ["1", "0.8s"])
 
-        # min_time (5s) > narration (1s) + padding (0.5s)
-        # Should wait 5s
+        start = time.time()
+        await recorder._smart_wait(cmd, 0)
+        elapsed = time.time() - start
+
+        # Should wait 0.8s (min_time), since min_time > narration + padding
+        assert elapsed >= 0.75, f"Expected >= 0.75s, got {elapsed:.2f}s"
+
+    @pytest.mark.asyncio
+    async def test_smart_wait_no_narration(self):
+        """Test smart wait with no narration uses min_time."""
+        import time
+
+        from demorec.modes.presentation import PresentationRecorder
+        from demorec.parser import Command
+
+        recorder = PresentationRecorder()
+        recorder._timed_narrations = {}  # No narrations
+
+        cmd = Command("Slide", ["1", "0.2s"])
+
+        start = time.time()
+        await recorder._smart_wait(cmd, 0)
+        elapsed = time.time() - start
+
+        # Should wait exactly min_time (0.2s) with no narration
+        assert elapsed >= 0.15, f"Expected >= 0.15s, got {elapsed:.2f}s"

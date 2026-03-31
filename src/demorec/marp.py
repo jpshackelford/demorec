@@ -3,6 +3,7 @@
 import shutil
 import subprocess
 import tempfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
@@ -10,6 +11,10 @@ from urllib.parse import urlparse
 THEME_ALIASES = {
     "openhands": "https://raw.githubusercontent.com/jpshackelford/marp-intro/main/openhands-theme/openhands.css",
 }
+
+# Security limits for downloads
+DOWNLOAD_TIMEOUT_SECONDS = 30
+DOWNLOAD_MAX_SIZE_BYTES = 100_000_000  # 100MB
 
 
 def check_marp_installed() -> bool:
@@ -23,12 +28,31 @@ def is_url(path: str) -> bool:
 
 
 def download_file(url: str, output_dir: Path, filename: str | None = None) -> Path:
-    """Download a file from URL to local path."""
+    """Download a file from URL to local path with security limits.
+
+    Args:
+        url: HTTP(S) URL to download
+        output_dir: Directory to save the file
+        filename: Optional filename (extracted from URL if not provided)
+
+    Raises:
+        ValueError: If file exceeds size limit
+        RuntimeError: If download fails
+    """
     if filename is None:
         filename = Path(urlparse(url).path).name or "downloaded_file"
 
     output_path = output_dir / filename
-    urllib.request.urlretrieve(url, output_path)
+    try:
+        with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > DOWNLOAD_MAX_SIZE_BYTES:
+                raise ValueError(
+                    f"File too large: {content_length} bytes (max {DOWNLOAD_MAX_SIZE_BYTES})"
+                )
+            output_path.write_bytes(response.read())
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Failed to download {url}: {e}") from e
     return output_path
 
 
@@ -89,17 +113,40 @@ def render_to_html(
             shutil.rmtree(temp_dir)
 
 
+def _validate_path_arg(path: str, name: str):
+    """Validate a path argument doesn't contain suspicious characters.
+
+    Args:
+        path: The path string to validate
+        name: Human-readable name for error messages
+
+    Raises:
+        ValueError: If path contains null bytes or is empty/whitespace
+    """
+    if "\x00" in path:
+        raise ValueError(f"{name} contains null bytes")
+    if not path or path.isspace():
+        raise ValueError(f"{name} is empty or whitespace")
+
+
 def _build_marp_command(
     md_path: Path,
     output: Path,
     theme: str | None,
     temp_dir: Path,
 ) -> list[str]:
-    """Build the marp CLI command."""
-    cmd = ["marp", "--html", str(md_path), "-o", str(output)]
+    """Build the marp CLI command with validated arguments."""
+    md_str = str(md_path)
+    output_str = str(output)
+
+    _validate_path_arg(md_str, "Presentation path")
+    _validate_path_arg(output_str, "Output path")
+
+    cmd = ["marp", "--html", md_str, "-o", output_str]
 
     resolved_theme = resolve_theme(theme, temp_dir)
     if resolved_theme:
+        _validate_path_arg(resolved_theme, "Theme path")
         cmd.extend(["--theme", resolved_theme])
 
     return cmd

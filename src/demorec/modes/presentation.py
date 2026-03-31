@@ -131,5 +131,9 @@ class PresentationRecorder(CommandExecutorMixin):
         video_files = list(output.parent.glob("*.webm"))
         if video_files:
             latest = max(video_files, key=lambda f: f.stat().st_mtime)
-            convert_webm_to_mp4(latest, output)
-            latest.unlink()
+            try:
+                convert_webm_to_mp4(latest, output)
+                latest.unlink()  # Only delete on successful conversion
+            except Exception:
+                # Keep webm if conversion fails - don't lose the recording
+                raise

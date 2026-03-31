@@ -3,6 +3,7 @@
 import asyncio
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 from ..marp import render_to_html
 from ..parser import Command, Segment, parse_time
@@ -58,11 +59,16 @@ class PresentationRecorder(CommandExecutorMixin):
 
         async with async_playwright() as p:
             context, page = await self._create_browser_context(p, output)
-            await page.goto(f"file://{self._html_path}", wait_until="load")
+            await page.goto(self._file_url(), wait_until="load")
             await asyncio.sleep(0.5)
             timestamps = await self._execute_commands_with_timing(page, segment)
             await context.close()
         return timestamps
+
+    def _file_url(self, fragment: str | None = None) -> str:
+        """Build properly encoded file:// URL for the HTML path."""
+        encoded = quote(str(self._html_path), safe="/:")
+        return f"file://{encoded}#{fragment}" if fragment else f"file://{encoded}"
 
     async def _create_browser_context(self, playwright, output: Path):
         """Create browser context with video recording."""
@@ -78,9 +84,7 @@ class PresentationRecorder(CommandExecutorMixin):
         """Navigate to a specific slide number."""
         if target == self._current_slide:
             return
-
-        # Marp uses URL hash for slide navigation (1-indexed in URL)
-        await page.goto(f"file://{self._html_path}#{target}")
+        await page.goto(self._file_url(str(target)))
         await asyncio.sleep(0.3)
         self._current_slide = target
 

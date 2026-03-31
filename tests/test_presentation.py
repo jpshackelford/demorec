@@ -153,6 +153,26 @@ class TestMarpModule:
         _validate_path_arg("relative/path.css", "Test path")
         _validate_path_arg("https://example.com/theme.css", "Test path")
 
+    def test_download_with_limit_enforces_size(self, tmp_path):
+        """Test that _download_with_limit enforces size limit during streaming."""
+        from io import BytesIO
+        from unittest.mock import MagicMock
+
+        from demorec.marp import DOWNLOAD_MAX_SIZE_BYTES, _download_with_limit
+
+        # Create a mock response that returns chunks exceeding the limit
+        mock_response = MagicMock()
+        chunk_size = 8192
+        chunks_needed = (DOWNLOAD_MAX_SIZE_BYTES // chunk_size) + 2
+        mock_response.read = MagicMock(
+            side_effect=[b"x" * chunk_size] * chunks_needed + [b""]
+        )
+
+        output_file = tmp_path / "test_download.bin"
+
+        with pytest.raises(ValueError, match="exceeds.*limit"):
+            _download_with_limit(mock_response, output_file)
+
     def test_theme_aliases(self):
         """Test theme alias resolution."""
         from demorec.marp import THEME_ALIASES, resolve_theme
@@ -210,62 +230,55 @@ class TestPresentationRecorder:
     @pytest.mark.asyncio
     async def test_smart_wait_narration_longer(self):
         """Test smart wait when narration is longer than min_time."""
-        import time
+        from unittest.mock import AsyncMock, patch
 
         from demorec.modes.presentation import PresentationRecorder
         from demorec.parser import Command
 
         recorder = PresentationRecorder()
 
-        # Mock a narration (using short durations for fast tests)
         class MockNarration:
             mode = "during"
-            duration = 0.3
+            duration = 5.0  # 5 seconds narration
 
         recorder._timed_narrations = {0: MockNarration()}
+        cmd = Command("Slide", ["1", "2s"])  # min_time = 2s
 
-        # min_time (0.1s) < narration (0.3s) + padding (0.5s) = 0.8s
-        cmd = Command("Slide", ["1", "0.1s"])
-
-        start = time.time()
-        await recorder._smart_wait(cmd, 0)
-        elapsed = time.time() - start
-
-        # Should wait ~0.8s (narration + padding), not 0.1s
-        assert elapsed >= 0.3, f"Expected >= 0.3s, got {elapsed:.2f}s"
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await recorder._smart_wait(cmd, 0)
+            # Should wait 5.5s (narration 5.0 + padding 0.5), not 2s
+            mock_sleep.assert_called_once()
+            actual_wait = mock_sleep.call_args[0][0]
+            assert actual_wait == 5.5, f"Expected 5.5s, got {actual_wait}s"
 
     @pytest.mark.asyncio
     async def test_smart_wait_min_time_longer(self):
         """Test smart wait when min_time is longer than narration."""
-        import time
+        from unittest.mock import AsyncMock, patch
 
         from demorec.modes.presentation import PresentationRecorder
         from demorec.parser import Command
 
         recorder = PresentationRecorder()
 
-        # Mock a short narration
         class MockNarration:
             mode = "during"
-            duration = 0.1
+            duration = 1.0  # 1 second narration
 
         recorder._timed_narrations = {0: MockNarration()}
+        cmd = Command("Slide", ["1", "5s"])  # min_time = 5s
 
-        # min_time (0.5s) > narration (0.1s) + padding (0.5s) = 0.6s
-        # Actually 0.5 < 0.6, so let's use 0.8s as min_time
-        cmd = Command("Slide", ["1", "0.8s"])
-
-        start = time.time()
-        await recorder._smart_wait(cmd, 0)
-        elapsed = time.time() - start
-
-        # Should wait 0.8s (min_time), since min_time > narration + padding
-        assert elapsed >= 0.75, f"Expected >= 0.75s, got {elapsed:.2f}s"
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await recorder._smart_wait(cmd, 0)
+            # min_time (5s) > narration (1s) + padding (0.5s) = 1.5s
+            mock_sleep.assert_called_once()
+            actual_wait = mock_sleep.call_args[0][0]
+            assert actual_wait == 5.0, f"Expected 5.0s, got {actual_wait}s"
 
     @pytest.mark.asyncio
     async def test_smart_wait_no_narration(self):
         """Test smart wait with no narration uses min_time."""
-        import time
+        from unittest.mock import AsyncMock, patch
 
         from demorec.modes.presentation import PresentationRecorder
         from demorec.parser import Command
@@ -273,11 +286,28 @@ class TestPresentationRecorder:
         recorder = PresentationRecorder()
         recorder._timed_narrations = {}  # No narrations
 
-        cmd = Command("Slide", ["1", "0.2s"])
+        cmd = Command("Slide", ["1", "3s"])
 
-        start = time.time()
-        await recorder._smart_wait(cmd, 0)
-        elapsed = time.time() - start
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await recorder._smart_wait(cmd, 0)
+            # Should wait exactly min_time (3s) with no narration
+            mock_sleep.assert_called_once()
+            actual_wait = mock_sleep.call_args[0][0]
+            assert actual_wait == 3.0, f"Expected 3.0s, got {actual_wait}s"
 
-        # Should wait exactly min_time (0.2s) with no narration
-        assert elapsed >= 0.15, f"Expected >= 0.15s, got {elapsed:.2f}s"
+    @pytest.mark.asyncio
+    async def test_smart_wait_zero_time(self):
+        """Test smart wait with zero wait time doesn't call sleep."""
+        from unittest.mock import AsyncMock, patch
+
+        from demorec.modes.presentation import PresentationRecorder
+        from demorec.parser import Command
+
+        recorder = PresentationRecorder()
+        recorder._timed_narrations = {}
+
+        cmd = Command("Slide", ["1"])  # No min_time specified
+
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await recorder._smart_wait(cmd, 0)
+            mock_sleep.assert_not_called()

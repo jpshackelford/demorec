@@ -27,11 +27,15 @@ def is_url(path: str) -> bool:
     return path.startswith(("http://", "https://"))
 
 
-def _check_content_length(response) -> None:
-    """Validate response Content-Length is within limits."""
-    content_length = response.headers.get("Content-Length")
-    if content_length and int(content_length) > DOWNLOAD_MAX_SIZE_BYTES:
-        raise ValueError(f"File too large: {content_length} bytes (max {DOWNLOAD_MAX_SIZE_BYTES})")
+def _download_with_limit(response, output_path: Path) -> None:
+    """Download response to file in chunks, enforcing size limit."""
+    bytes_read = 0
+    with open(output_path, "wb") as f:
+        while chunk := response.read(8192):
+            bytes_read += len(chunk)
+            if bytes_read > DOWNLOAD_MAX_SIZE_BYTES:
+                raise ValueError(f"Download exceeds {DOWNLOAD_MAX_SIZE_BYTES} bytes limit")
+            f.write(chunk)
 
 
 def download_file(url: str, output_dir: Path, filename: str | None = None) -> Path:
@@ -41,8 +45,7 @@ def download_file(url: str, output_dir: Path, filename: str | None = None) -> Pa
     output_path = output_dir / filename
     try:
         with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
-            _check_content_length(response)
-            output_path.write_bytes(response.read())
+            _download_with_limit(response, output_path)
     except urllib.error.URLError as e:
         raise RuntimeError(f"Failed to download {url}: {e}") from e
     return output_path
@@ -145,6 +148,8 @@ def _build_marp_command(
 
 
 def get_slide_count(html_path: Path) -> int:
-    """Count slides in rendered Marp HTML."""
+    """Count slides in rendered Marp HTML (best-effort for Marp-generated HTML)."""
+    import re
+
     content = html_path.read_text()
-    return content.count("<section ")
+    return len(re.findall(r"<section\s", content))

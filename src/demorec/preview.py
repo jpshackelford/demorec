@@ -375,21 +375,20 @@ class ScriptPreviewer:
     async def _preview_async(
         self, script_path: Path, segments: list, output_dir: Path | None
     ) -> PreviewResult:
-        """Async preview implementation supporting terminal and browser modes."""
+        """Async preview for terminal and browser segments."""
         setup_frames_dir(self._state, output_dir)
         screenshot_dir = setup_screenshot_dir(self._state, output_dir)
         init_start_time(self._state)
+        results = [await self._preview_segment(s, screenshot_dir) for s in segments]
+        return build_preview_result(sum(results, []), screenshot_dir, self._state)
 
-        all_results: list[CheckpointResult] = []
-        for segment in segments:
-            if segment.mode == "terminal":
-                results = await self._preview_terminal_segment(segment, screenshot_dir)
-            elif segment.mode == "browser":
-                results = await self._preview_browser_segment(segment, screenshot_dir)
-            else:
-                results = []
-            all_results.extend(results)
-        return build_preview_result(all_results, screenshot_dir, self._state)
+    async def _preview_segment(self, segment, screenshot_dir) -> list[CheckpointResult]:
+        """Preview a segment (terminal or browser)."""
+        if segment.mode == "terminal":
+            return await self._preview_terminal_segment(segment, screenshot_dir)
+        if segment.mode == "browser":
+            return await self._preview_browser_segment(segment, screenshot_dir)
+        return []
 
     async def _preview_terminal_segment(
         self, segment, screenshot_dir: Path | None

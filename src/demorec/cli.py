@@ -286,22 +286,25 @@ def preview(
 
         demorec preview script.demorec -o ./frames --no-frames
     """
-    console.print("[bold blue]demorec[/] preview")
-    console.print(f"[dim]Script:[/] {script}")
-    console.print(f"[dim]Terminal:[/] {rows} rows")
-
     segments = _get_all_segments(script)
     screenshot_mode = _get_screenshot_mode(screenshots)
     capture_frames = _get_capture_frames_mode(frames, output_dir)
     has_browser = any(s.mode == "browser" for s in segments)
 
+    _print_preview_header(script, rows, screenshot_mode, capture_frames, has_browser)
+    result = _run_preview(script, segments, rows, screenshot_mode, output_dir, capture_frames)
+    _print_preview_results(result)
+
+
+def _print_preview_header(script, rows, screenshot_mode, capture_frames, has_browser):
+    """Print preview command header."""
+    console.print("[bold blue]demorec[/] preview")
+    console.print(f"[dim]Script:[/] {script}")
+    console.print(f"[dim]Terminal:[/] {rows} rows")
     console.print(f"[dim]Screenshots:[/] {screenshot_mode}")
     console.print(f"[dim]Frame capture:[/] {'enabled' if capture_frames else 'disabled'}")
     console.print(f"[dim]Mode:[/] {'multi-segment' if has_browser else 'terminal-only'}")
     console.print()
-
-    result = _run_preview(script, segments, rows, screenshot_mode, output_dir, capture_frames)
-    _print_preview_results(result)
 
 
 def _get_all_segments(script: Path):

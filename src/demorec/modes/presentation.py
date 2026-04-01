@@ -9,6 +9,10 @@ from ..marp import render_to_html
 from ..parser import Command, Segment, parse_time
 from . import CommandExecutorMixin, convert_webm_to_mp4
 
+# Timing constants
+SLIDE_TRANSITION_DELAY = 0.3  # Allow Marp CSS transitions to complete after navigation
+NARRATION_PADDING = 0.5  # Extra buffer time after narration completes
+
 
 async def _cmd_slide(page, cmd: Command, recorder: "PresentationRecorder"):
     """Navigate to a specific slide."""
@@ -85,7 +89,7 @@ class PresentationRecorder(CommandExecutorMixin):
         if target == self._current_slide:
             return
         await page.goto(self._file_url(str(target)))
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(SLIDE_TRANSITION_DELAY)
         self._current_slide = target
 
     async def _execute_commands_with_timing(self, page, segment: Segment) -> dict:
@@ -113,8 +117,7 @@ class PresentationRecorder(CommandExecutorMixin):
         narration = self._timed_narrations.get(cmd_idx)
 
         if narration and narration.mode == "during":
-            padding = 0.5
-            actual_wait = max(min_time, narration.duration + padding)
+            actual_wait = max(min_time, narration.duration + NARRATION_PADDING)
         else:
             actual_wait = min_time
 

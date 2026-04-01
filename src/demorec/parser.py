@@ -1,9 +1,12 @@
 """Parser for .demorec script files."""
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -236,6 +239,9 @@ def _parse_mode_spec(mode_spec: str) -> tuple[str, str]:
     return mode_spec, "default"
 
 
+VALID_MODES = {"terminal", "browser", "presentation"}
+
+
 def _create_mode_segment(mode: str, session_name: str, args: list[str]) -> Segment | None:
     """Create a segment for the given mode."""
     if mode in ("terminal", "browser"):
@@ -243,6 +249,8 @@ def _create_mode_segment(mode: str, session_name: str, args: list[str]) -> Segme
     if mode == "presentation":
         file_path = parse_string(args[1]) if len(args) > 1 else None
         return Segment(mode="presentation", presentation_file=file_path)
+    if mode not in VALID_MODES:
+        logger.warning("Unknown mode '%s' - ignoring. Valid modes: %s", mode, ", ".join(sorted(VALID_MODES)))
     return None
 
 

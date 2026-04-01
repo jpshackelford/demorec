@@ -250,7 +250,8 @@ def _create_mode_segment(mode: str, session_name: str, args: list[str]) -> Segme
         file_path = parse_string(args[1]) if len(args) > 1 else None
         return Segment(mode="presentation", presentation_file=file_path)
     if mode not in VALID_MODES:
-        logger.warning("Unknown mode '%s' - ignoring. Valid modes: %s", mode, ", ".join(sorted(VALID_MODES)))
+        valid = ", ".join(sorted(VALID_MODES))
+        logger.warning("Unknown mode '%s' - ignoring. Valid modes: %s", mode, valid)
     return None
 
 

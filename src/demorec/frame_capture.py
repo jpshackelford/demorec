@@ -29,7 +29,10 @@ def setup_frames_dir(state: FrameCaptureState, output_dir: Path | None):
         state.frames_dir = None
         return
     state.frames_dir = output_dir
-    state.frames_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        state.frames_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise RuntimeError(f"Cannot create frames directory {output_dir}: {e}") from e
     state.frame_counter = 0
     state.start_time = None
 
@@ -57,7 +60,7 @@ async def capture_frame(state: FrameCaptureState, page, mode: str) -> Path | Non
     state.frame_counter += 1
     elapsed = time.time() - state.start_time
     ext = "txt" if mode == "terminal" else "png"
-    filepath = state.frames_dir / f"frame_{state.frame_counter:04d}_{elapsed:06.2f}.{ext}"
+    filepath = state.frames_dir / f"frame_{state.frame_counter:04d}_{elapsed:07.2f}.{ext}"
 
     if mode == "terminal":
         return await _save_terminal_frame(page, filepath)

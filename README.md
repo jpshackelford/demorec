@@ -174,18 +174,18 @@ When `--output-dir` is specified (or `--frames` is used), preview captures the t
 - **Terminal frames**: Saved as `.txt` files containing the visible terminal buffer
 - **Browser frames**: Saved as `.png` screenshots
 
-Frame naming convention: `frame_{NNNN}_{SSS.ss}.{ext}`
+Frame naming convention: `frame_{NNNN}_{SSSS.ss}.{ext}`
 - `NNNN`: Zero-padded 4-digit frame number (0001, 0002, ...)
-- `SSS.ss`: Elapsed time in seconds with 2 decimal places (000.00, 001.25, ...)
+- `SSSS.ss`: Elapsed time in seconds with 2 decimal places (0000.00, 0001.25, ...)
 - `ext`: File extension (`.txt` for terminal, `.png` for browser)
 
 Example output:
 ```
 frames/
-├── frame_0001_000.00.txt    # Initial terminal state
-├── frame_0002_000.05.txt    # After first command
-├── frame_0003_000.28.txt    # After Type "vim file.py"
-├── frame_0004_001.52.txt    # After Enter
+├── frame_0001_0000.00.txt    # Initial terminal state
+├── frame_0002_0000.05.txt    # After first command
+├── frame_0003_0000.28.txt    # After Type "vim file.py"
+├── frame_0004_0001.52.txt    # After Enter
 └── ...
 ```
 

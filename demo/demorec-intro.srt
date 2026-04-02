@@ -1,0 +1,98 @@
+1
+00:00:00,000 --> 00:00:03,186
+demorec. Proof of work that's easy on the
+eye.
+
+2
+00:00:04,308 --> 00:00:16,194
+AI agents are writing more code than ever.
+Reviewers need evidence that changes
+actually work. Video is easy to consume,
+but time-consuming to produce.
+
+3
+00:00:17,012 --> 00:00:30,100
+Demorec produces short video demos from
+scripts that execute real commands.
+Because the script runs the actual
+code—especially in CI without human
+influence—the evidence is hard to fake.
+
+4
+00:00:30,920 --> 00:00:40,663
+In this demo, we'll walk through this
+script in vim, start a web server, view
+the page in the browser, and return to
+terminal to see the request logs.
+
+5
+00:00:41,840 --> 00:00:44,662
+Let's look at the script that's producing
+this video.
+
+6
+00:00:51,691 --> 00:00:57,359
+At the top, we set the output file,
+dimensions, and voice for narration.
+
+7
+00:01:01,163 --> 00:01:04,037
+Here we switch to presentation mode and
+show slides.
+
+8
+00:01:07,838 --> 00:01:13,533
+Then we switch to terminal mode. This is
+where we open vim to show this very
+script.
+
+9
+00:01:17,451 --> 00:01:21,238
+Next, we switch to browser mode to
+navigate to a web page.
+
+10
+00:01:25,151 --> 00:01:30,062
+And back to terminal to see the server
+logs. Mode switches are seamless.
+
+11
+00:01:31,444 --> 00:01:35,101
+Now let's see it in action. We'll start a
+server.
+
+12
+00:01:43,082 --> 00:01:44,597
+And view it in the browser.
+
+13
+00:01:49,116 --> 00:01:53,139
+The page loads. This is real—the server is
+actually running.
+
+14
+00:01:53,004 --> 00:01:57,027
+Back to the terminal—you can see the
+request in the server logs.
+
+15
+00:02:01,031 --> 00:02:07,248
+Every mode switch, every command, every
+page load—it all actually executes.
+
+16
+00:02:08,604 --> 00:02:12,731
+When recording finishes, you get an MP4
+and subtitles.
+
+17
+00:02:18,224 --> 00:02:22,717
+The reviewer watches 30 seconds instead of
+reading 200 lines of code.
+
+18
+00:02:23,000 --> 00:02:29,713
+Demorec. Proof of work that's easy on the
+eye. Check out the repo and try it on your
+next PR.
+

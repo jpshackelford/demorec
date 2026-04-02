@@ -1,6 +1,10 @@
 # demorec 🎬
 
-**Record CLI and web-based demos from a single script.**
+**Proof of work that's easy on the eye.**
+
+<video src="https://github.com/jpshackelford/demorec/raw/main/demo/demorec-intro.mp4" controls width="100%"></video>
+
+> 📺 [View full demo with script](https://htmlpreview.github.io/?https://github.com/jpshackelford/demorec/blob/main/demo/index.html) | [Download video](demo/demorec-intro.mp4)
 
 demorec is a declarative tool for creating professional demo videos that seamlessly mix terminal and browser interactions—perfect for product demos, tutorials, and PR walkthroughs.
 

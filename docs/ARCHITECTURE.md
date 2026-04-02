@@ -4,15 +4,89 @@ This document describes the internal architecture of demorec, a tool for recordi
 
 ## Table of Contents
 
-1. [System Overview](#system-overview)
-2. [Recording Pipeline](#recording-pipeline)
-3. [Terminal Recording Architecture](#terminal-recording-architecture)
-4. [Terminal Size and Viewport Management](#terminal-size-and-viewport-management)
-5. [Persistent Terminal Sessions](#persistent-terminal-sessions)
-6. [Preview and Verification System](#preview-and-verification-system)
-7. [Browser Recording](#browser-recording)
-8. [Narration and Audio Pipeline](#narration-and-audio-pipeline)
-9. [Component Relationships](#component-relationships)
+1. [Dependencies and Third-Party Tools](#dependencies-and-third-party-tools)
+2. [System Overview](#system-overview)
+3. [Recording Pipeline](#recording-pipeline)
+4. [Terminal Recording Architecture](#terminal-recording-architecture)
+5. [Terminal Size and Viewport Management](#terminal-size-and-viewport-management)
+6. [Persistent Terminal Sessions](#persistent-terminal-sessions)
+7. [Preview and Verification System](#preview-and-verification-system)
+8. [Browser Recording](#browser-recording)
+9. [Narration and Audio Pipeline](#narration-and-audio-pipeline)
+10. [Component Relationships](#component-relationships)
+
+---
+
+## Dependencies and Third-Party Tools
+
+demorec integrates several external tools and libraries. Understanding these dependencies is essential for development and troubleshooting.
+
+### System Tools (External Binaries)
+
+| Tool | Version | Purpose | Used By |
+|------|---------|---------|---------|
+| **[ttyd](https://github.com/tsl0922/ttyd)** | 1.7.7+ | WebSocket-based terminal server that bridges xterm.js to a real PTY | `ttyd.py` |
+| **[tmux](https://github.com/tmux/tmux)** | 3.0+ | Terminal multiplexer for persistent sessions across mode switches | `ttyd.py` |
+| **[FFmpeg](https://ffmpeg.org/)** | 4.0+ | Video concatenation, format conversion, audio mixing | `audio.py`, `modes/terminal.py` |
+| **[vim](https://www.vim.org/)** | 8.0+ | Text editor (optional, only for vim primitives) | `modes/vim.py` |
+| **[Marp CLI](https://github.com/marp-team/marp-cli)** | 3.0+ | Markdown presentation renderer (optional, only for presentation mode) | `marp.py` |
+
+### Python Libraries
+
+| Library | Purpose | Used By |
+|---------|---------|---------|
+| **[Playwright](https://playwright.dev/python/)** | Browser automation for both terminal (via xterm.js) and web recording | `modes/terminal.py`, `modes/browser.py`, `preview.py` |
+| **[Click](https://click.palletsprojects.com/)** | CLI framework for command-line interface | `cli.py` |
+| **[Rich](https://rich.readthedocs.io/)** | Terminal formatting, progress bars, and console output | `runner.py`, `cli.py` |
+| **[edge-tts](https://github.com/rany2/edge-tts)** | Microsoft Edge text-to-speech (free, no API key) | `tts.py` |
+| **[ElevenLabs](https://elevenlabs.io/)** | Premium TTS voices (optional, requires API key) | `tts.py` |
+
+### JavaScript Libraries (Loaded via ttyd)
+
+| Library | Purpose | Notes |
+|---------|---------|-------|
+| **[xterm.js](https://xtermjs.org/)** | Terminal emulator in the browser | Bundled with ttyd, renders ANSI output |
+| **[xterm-addon-fit](https://github.com/xtermjs/xterm.js/tree/master/addons/addon-fit)** | Auto-fit terminal to container | Used for row count targeting |
+
+### How Tools Interact
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          demorec (Python)                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│  CLI (Click)  →  Parser  →  Runner  →  Recorders  →  Audio (FFmpeg)    │
+└───────┬─────────────────────────────────────────────────────────────────┘
+        │
+        │ spawns processes / controls browser
+        ▼
+┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐
+│      ttyd         │  │    Playwright     │  │      FFmpeg       │
+│  (terminal PTY)   │  │ (browser control) │  │ (video/audio)     │
+├───────────────────┤  ├───────────────────┤  ├───────────────────┤
+│ • WebSocket server│  │ • Chromium browser│  │ • concat segments │
+│ • PTY management  │  │ • Video recording │  │ • mix audio       │
+│ • RESIZE protocol │  │ • Screenshot      │  │ • format convert  │
+└─────────┬─────────┘  └─────────┬─────────┘  └───────────────────┘
+          │                      │
+          │ attaches to          │ renders
+          ▼                      ▼
+┌───────────────────┐  ┌───────────────────┐
+│      tmux         │  │     xterm.js      │
+│ (session persist) │  │ (terminal render) │
+├───────────────────┤  ├───────────────────┤
+│ • Named sessions  │  │ • ANSI rendering  │
+│ • State preserve  │  │ • Font scaling    │
+│ • Process isolate │  │ • fit() addon     │
+└───────────────────┘  └───────────────────┘
+```
+
+### Version Compatibility Notes
+
+- **Python**: Requires 3.10+ (uses `match` statements, type unions with `|`)
+- **Playwright**: Uses async API; requires `playwright install chromium` after pip install
+- **ttyd**: Must support `--writable` flag and WebSocket RESIZE_TERMINAL protocol
+- **tmux**: Any recent version; status bar is disabled for clean recordings
+- **FFmpeg**: Needs `libx264` encoder and `aac` audio codec support
 
 ---
 

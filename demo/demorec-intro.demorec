@@ -1,0 +1,180 @@
+# demorec-intro.demorec
+# A demo of demorec - this script shows itself being made
+Output demorec-intro.mp4
+Set Width 1280
+Set Height 720
+
+# @voice eleven:rachel
+
+# ═══════════════════════════════════════════════════
+# TITLE SLIDE
+# ═══════════════════════════════════════════════════
+@mode presentation "slides.md"
+Set Theme "default"
+
+# @narrate:during "demorec. Proof of work that's easy on the eye."
+Slide 1 4s
+
+# ═══════════════════════════════════════════════════
+# PROBLEM + SOLUTION SLIDES
+# ═══════════════════════════════════════════════════
+
+# @narrate:during "AI agents are writing more code than ever. Reviewers need evidence that changes actually work. Video is easy to consume, but time-consuming to produce."
+Slide 2 7s
+
+# @narrate:during "Demorec produces short video demos from scripts that execute real commands. Because the script runs the actual code—especially in CI without human influence—the evidence is hard to fake."
+Slide 3 8s
+
+# @narrate:during "In this demo, we'll walk through this script in vim, start a web server, view the page in the browser, and return to terminal to see the request logs."
+Slide 4 7s
+
+# ═══════════════════════════════════════════════════
+# TERMINAL: Walk through this very script in vim
+# ═══════════════════════════════════════════════════
+@mode terminal
+Set Theme "Dracula"
+
+# @narrate:before "Let's look at the script that's producing this video."
+Type "vim demorec-intro.demorec"
+Enter
+Sleep 1s
+
+Type ":set number"
+Enter
+Sleep 500ms
+
+# Show the top - highlight output settings
+Type "3G"
+Sleep 200ms
+Type "V"
+Type "5G"
+Sleep 500ms
+
+# @narrate:after "At the top, we set the output file, dimensions, and voice for narration."
+Sleep 2s
+
+Escape
+Sleep 200ms
+
+# Jump to presentation section and highlight
+Type "12G"
+Sleep 200ms
+Type "zz"
+Sleep 300ms
+Type "V"
+Type "16G"
+Sleep 500ms
+
+# @narrate:after "Here we switch to presentation mode and show slides."
+Sleep 2s
+
+Escape
+Sleep 200ms
+
+# Jump to terminal section and highlight
+Type "34G"
+Sleep 200ms
+Type "zz"
+Sleep 300ms
+Type "V"
+Type "35G"
+Sleep 500ms
+
+# @narrate:after "Then we switch to terminal mode. This is where we open vim to show this very script."
+Sleep 2s
+
+Escape
+Sleep 200ms
+
+# Jump to browser section and highlight
+Type "137G"
+Sleep 200ms
+Type "zz"
+Sleep 300ms
+Type "V"
+Type "140G"
+Sleep 500ms
+
+# @narrate:after "Next, we switch to browser mode to navigate to a web page."
+Sleep 2s
+
+Escape
+Sleep 200ms
+
+# Jump to back to terminal for logs and highlight
+Type "149G"
+Sleep 200ms
+Type "zz"
+Sleep 300ms
+Type "V"
+Type "152G"
+Sleep 500ms
+
+# @narrate:after "And back to terminal to see the server logs. Mode switches are seamless."
+Sleep 2s
+
+Escape
+Type ":q!"
+Enter
+Sleep 500ms
+
+# ═══════════════════════════════════════════════════
+# TERMINAL: Start a simple server for the demo
+# ═══════════════════════════════════════════════════
+@mode terminal:server
+
+# @narrate:before "Now let's see it in action. We'll start a server."
+Type "cd /tmp && echo '<h1>Hello from demorec!</h1>' > index.html"
+Enter
+Sleep 500ms
+Type "python3 -m http.server 8080"
+Enter
+Sleep 2s
+
+# ═══════════════════════════════════════════════════
+# BROWSER: View the server
+# ═══════════════════════════════════════════════════
+@mode browser
+
+# @narrate:before "And view it in the browser."
+Navigate "http://localhost:8080"
+Sleep 2s
+
+# @narrate:after "The page loads. This is real—the server is actually running."
+Sleep 2s
+
+# ═══════════════════════════════════════════════════
+# TERMINAL: Show server logs
+# ═══════════════════════════════════════════════════
+@mode terminal:server
+
+# @narrate:before "Back to the terminal—you can see the request in the server logs."
+Sleep 2s
+
+# @narrate:after "Every mode switch, every command, every page load—it all actually executes."
+Sleep 2s
+
+# Stop the server
+Ctrl+C
+Sleep 500ms
+
+# ═══════════════════════════════════════════════════
+# TERMINAL: Show the output files
+# ═══════════════════════════════════════════════════
+@mode terminal
+
+# @narrate:before "When recording finishes, you get an MP4 and subtitles."
+Type "ls -la demorec-intro.*"
+Enter
+Sleep 2s
+
+# @narrate:after "The reviewer watches 30 seconds instead of reading 200 lines of code."
+Sleep 2s
+
+# ═══════════════════════════════════════════════════
+# CLOSING SLIDE
+# ═══════════════════════════════════════════════════
+@mode presentation "slides.md"
+
+# @narrate:during "Demorec. Proof of work that's easy on the eye. Check out the repo and try it on your next PR."
+Slide 5 5s

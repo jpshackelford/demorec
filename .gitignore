@@ -10,3 +10,6 @@ __pycache__/
 
 # But allow PR evidence videos
 !.pr/*.mp4
+
+# Allow demo videos
+!demo/*.mp4

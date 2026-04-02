@@ -1,0 +1,99 @@
+# Demo: Presentation Mode Feature
+# Shows creating and displaying Marp presentations with demorec
+
+Output .pr/demo_presentation_mode.mp4
+Set Width 1920
+Set Height 1080
+
+# ─────────────────────────────────────
+# INTRO SLIDE - Using OpenHands theme
+# ─────────────────────────────────────
+@mode presentation "https://raw.githubusercontent.com/jpshackelford/marp-intro/main/examples/openhands-intro/openhands-intro.md"
+Set Theme "openhands"
+
+Slide 1 3s
+
+# ─────────────────────────────────────
+# VIM: Edit a Marp presentation
+# ─────────────────────────────────────
+@mode terminal
+@terminal:rows 30
+Set Theme "Dracula"
+
+Type "# Let's create a Marp presentation"
+Enter
+Sleep 1s
+
+Type "vim demo_materials/my_presentation.md"
+Enter
+Sleep 2s
+
+# Show the frontmatter
+Escape
+Type ":1"
+Enter
+Sleep 1s
+
+# Highlight the Marp configuration
+Type "V"
+Type "8j"
+Sleep 2s
+
+# Jump to slide content
+Escape
+Type ":12"
+Enter
+Sleep 1s
+
+# Show slide 1 title
+Type "V"
+Type "5j"
+Sleep 2s
+
+# Navigate to features slide
+Escape
+Type ":22"
+Enter
+Sleep 1s
+Type "V"
+Type "7j"
+Sleep 2s
+
+# Close vim
+Escape
+Type ":q"
+Enter
+Sleep 1s
+
+# ─────────────────────────────────────
+# PRESENTATION: Show the rendered slides
+# ─────────────────────────────────────
+@mode presentation "demo_materials/my_presentation.md"
+Set Theme "openhands"
+
+Slide 1 3s
+Slide 2 2s
+Slide 3 3s
+Slide 4 3s
+Slide 5 2s
+
+# ─────────────────────────────────────
+# BACK TO TERMINAL: Show the command
+# ─────────────────────────────────────
+@mode terminal
+
+Type "# That's presentation mode in action!"
+Enter
+Sleep 1s
+
+Type "cat demo_presentation_mode.demorec | grep -A2 '@mode presentation'"
+Enter
+Sleep 3s
+
+# ─────────────────────────────────────
+# CLOSING SLIDE
+# ─────────────────────────────────────
+@mode presentation "https://raw.githubusercontent.com/jpshackelford/marp-intro/main/examples/openhands-intro/openhands-intro.md"
+Set Theme "openhands"
+
+Slide 20 3s

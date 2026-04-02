@@ -703,60 +703,6 @@ Sleep 1s
 
 ---
 
-## Implementation Checklist
-
-### Phase 1: Core Infrastructure
-- [ ] Project structure with `pyproject.toml` (uv-compatible)
-- [ ] CLI entry point with `click`
-- [ ] DSL parser for `.demorec` files
-- [ ] Segment planner (split script by `@mode` switches)
-
-### Phase 2: Terminal Recording
-- [ ] xterm.js HTML template with Dracula theme
-- [ ] Terminal runner using Playwright
-- [ ] Support: `Type`, `Enter`, `Sleep`, `Ctrl+X`
-- [ ] Theme support (Dracula, GitHub Dark, etc.)
-- [ ] Fix terminal height to full line increments
-- [ ] ANSI color and styling support (verified in POC)
-
-### Phase 3: Browser Recording  
-- [ ] Browser runner using Playwright
-- [ ] Support: `Navigate`, `Click`, `Type`, `Fill`, `Press`
-- [ ] Support: `Sleep`, `Wait`, `Scroll`, `Hover`
-- [ ] Support: `Highlight`, `Unhighlight`, `Screenshot`
-
-### Phase 4: Video Pipeline
-- [ ] FFmpeg segment concatenation
-- [ ] Consistent resolution across segments
-- [ ] Smooth transitions between modes
-
-### Phase 5: Narration (TTS)
-- [ ] ElevenLabs integration
-- [ ] Google TTS (gTTS) fallback
-- [ ] `@voice` directive parsing
-- [ ] `@narrate:before/during/after` modes
-- [ ] Audio timing calculation
-- [ ] FFmpeg audio mixing with video
-
-### Phase 6: Polish
-- [ ] `demorec validate` command
-- [ ] `demorec voices` command  
-- [ ] `demorec install` for browser setup
-- [ ] Error messages with line numbers
-- [ ] Progress output during recording
-- [ ] SRT subtitle generation
-
-### Phase 7: Advanced Features (Future)
-- [ ] `Include` directive for reusable snippets
-- [ ] `Hide`/`Show` for setup commands
-- [x] Persistent terminal session across mode switches
-- [x] Multiple named terminal sessions (`@mode terminal:name`)
-- [ ] GIF output support
-- [ ] Cursor/mouse visualization in browser
-- [ ] Picture-in-picture mode
-
----
-
 ## Prior Art
 
 - [charmbracelet/vhs](https://github.com/charmbracelet/vhs) - Terminal GIF recorder (inspiration)
@@ -767,3 +713,7 @@ Sleep 1s
 ## License
 
 MIT
+
+## Support
+
+This is an OpenHands Sandbox project, meaning that it is a preview of technology and not yet supported for production use. 

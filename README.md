@@ -150,6 +150,12 @@ demorec preview script.demorec --rows 30 --screenshots
 
 # Never capture screenshots (fastest)
 demorec preview script.demorec --rows 30 --no-screenshots
+
+# Capture frame-by-frame snapshots for AI debugging
+demorec preview script.demorec --rows 30 -o ./frames
+
+# Capture frames without output directory (disable frame capture explicitly)
+demorec preview script.demorec --rows 30 -o ./frames --no-frames
 ```
 
 Preview auto-detects "show moments" (visual selections in vim) and verifies that expected lines are visible:
@@ -157,8 +163,33 @@ Preview auto-detects "show moments" (visual selections in vim) and verifies that
 ```
 [PASS] Checkpoint 1 (line 11): lines 6-8 visible
 [PASS] Checkpoint 2 (line 33): lines 27-35 visible
+Frames captured: 15 frames to ./frames
 Summary: 2/2 passed
 ```
+
+#### Frame-by-Frame Capture
+
+When `--output-dir` is specified (or `--frames` is used), preview captures the terminal/browser state at every step:
+
+- **Terminal frames**: Saved as `.txt` files containing the visible terminal buffer
+- **Browser frames**: Saved as `.png` screenshots
+
+Frame naming convention: `frame_{NNNN}_{SSSS.ss}.{ext}`
+- `NNNN`: Zero-padded 4-digit frame number (0001, 0002, ...)
+- `SSSS.ss`: Elapsed time in seconds with 2 decimal places (0000.00, 0001.25, ...)
+- `ext`: File extension (`.txt` for terminal, `.png` for browser)
+
+Example output:
+```
+frames/
+├── frame_0001_0000.00.txt    # Initial terminal state
+├── frame_0002_0000.05.txt    # After first command
+├── frame_0003_0000.28.txt    # After Type "vim file.py"
+├── frame_0004_0001.52.txt    # After Enter
+└── ...
+```
+
+This is useful for AI agents debugging recordings and verifying terminal output at each step.
 
 ### Checkpoints
 

@@ -1,7 +1,8 @@
 """Preview runner for verifying terminal recordings at checkpoints.
 
 Runs through a script, pausing at auto-detected checkpoints to verify
-that expected content is visible on screen.
+that expected content is visible on screen. Also supports frame-by-frame
+capture for AI debugging and verification.
 """
 
 import asyncio
@@ -9,6 +10,14 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .frame_capture import (
+    FrameCaptureState,
+    capture_frame,
+    dispatch_terminal_command,
+    init_start_time,
+    setup_frames_dir,
+    setup_screenshot_dir,
+)
 from .stage import Checkpoint
 from .ttyd import find_ttyd, start_ttyd, stop_ttyd
 from .xterm import fit_to_rows, get_buffer_state, setup_container
@@ -35,6 +44,24 @@ class PreviewResult:
     failed: int
     results: list[CheckpointResult]
     screenshot_dir: Path | None
+    frame_count: int = 0
+    frames_dir: Path | None = None
+
+
+def build_preview_result(
+    results: list[CheckpointResult], screenshot_dir: Path | None, state: FrameCaptureState
+) -> PreviewResult:
+    """Build final PreviewResult from checkpoint results."""
+    passed = sum(1 for r in results if r.passed)
+    return PreviewResult(
+        total=len(results),
+        passed=passed,
+        failed=len(results) - passed,
+        results=results,
+        screenshot_dir=screenshot_dir if results else None,
+        frame_count=state.frame_counter,
+        frames_dir=state.frames_dir,
+    )
 
 
 class TerminalPreviewer:
@@ -46,12 +73,23 @@ class TerminalPreviewer:
         width: int = 1280,
         height: int = 720,
         screenshots: str = "on_error",
+        capture_frames: bool = False,
     ):
         self.rows = rows
         self.width = width
         self.height = height
-        self.screenshots = screenshots
         self._ttyd_process = None
+        self._state = FrameCaptureState(capture_frames=capture_frames, screenshots=screenshots)
+
+    @property
+    def screenshots(self) -> str:
+        """Screenshots mode (for backward compatibility)."""
+        return self._state.screenshots
+
+    @property
+    def capture_frames(self) -> bool:
+        """Whether frame capture is enabled (for backward compatibility)."""
+        return self._state.capture_frames
 
     def preview(self, script_path: Path, segment, output_dir: Path | None = None) -> PreviewResult:
         """Run preview and return results."""
@@ -61,7 +99,8 @@ class TerminalPreviewer:
         self, script_path: Path, segment, output_dir: Path | None
     ) -> PreviewResult:
         checkpoints = self._detect_checkpoints_from_commands(segment.commands)
-        screenshot_dir = self._setup_screenshot_dir(output_dir)
+        screenshot_dir = setup_screenshot_dir(self._state, output_dir)
+        setup_frames_dir(self._state, output_dir)
 
         find_ttyd()  # Validate ttyd exists (raises if not)
         port = 7682
@@ -74,28 +113,7 @@ class TerminalPreviewer:
         finally:
             stop_ttyd(self._ttyd_process)
 
-        return self._build_result(results, screenshot_dir)
-
-    def _setup_screenshot_dir(self, output_dir: Path | None) -> Path | None:
-        """Set up screenshot directory if needed."""
-        if self.screenshots == "never":
-            return None
-        screenshot_dir = output_dir or Path(".demorec_preview")
-        screenshot_dir.mkdir(exist_ok=True)
-        return screenshot_dir
-
-    def _build_result(
-        self, results: list[CheckpointResult], screenshot_dir: Path | None
-    ) -> PreviewResult:
-        """Build final PreviewResult from checkpoint results."""
-        passed = sum(1 for r in results if r.passed)
-        return PreviewResult(
-            total=len(results),
-            passed=passed,
-            failed=len(results) - passed,
-            results=results,
-            screenshot_dir=screenshot_dir if results else None,
-        )
+        return build_preview_result(results, screenshot_dir, self._state)
 
     async def _run_browser_session(
         self, port: int, segment, checkpoints: list[Checkpoint], screenshot_dir: Path | None
@@ -117,16 +135,39 @@ class TerminalPreviewer:
         """Execute commands and verify checkpoints."""
         results: list[CheckpointResult] = []
         checkpoint_map = {cp.command_index: cp for cp in checkpoints}
+        await self._init_frame_capture(page)
 
         for cmd_idx, cmd in enumerate(segment.commands):
             await self._execute_command(page, cmd)
-            if cmd_idx in checkpoint_map:
-                await asyncio.sleep(0.5)
-                result = await self._verify_checkpoint(
-                    page, checkpoint_map[cmd_idx], screenshot_dir, len(results) + 1
-                )
+            await self._maybe_capture_frame(page)
+            result = await self._maybe_verify_checkpoint(
+                page, cmd_idx, checkpoint_map, screenshot_dir, len(results)
+            )
+            if result:
                 results.append(result)
         return results
+
+    async def _init_frame_capture(self, page):
+        """Initialize timing and capture initial frame if enabled."""
+        if self._state.capture_frames and self._state.frames_dir:
+            init_start_time(self._state)
+            await capture_frame(self._state, page, "terminal")
+
+    async def _maybe_capture_frame(self, page):
+        """Capture frame after command if enabled."""
+        if self._state.capture_frames and self._state.frames_dir:
+            await asyncio.sleep(0.05)
+            await capture_frame(self._state, page, "terminal")
+
+    async def _maybe_verify_checkpoint(
+        self, page, cmd_idx: int, checkpoint_map: dict, screenshot_dir: Path | None, count: int
+    ) -> CheckpointResult | None:
+        """Verify checkpoint if current command index matches."""
+        if cmd_idx not in checkpoint_map:
+            return None
+        await asyncio.sleep(0.5)
+        cp = checkpoint_map[cmd_idx]
+        return await self._verify_checkpoint(page, cp, screenshot_dir, count + 1)
 
     async def _setup_browser_page(self, browser, port: int):
         """Set up browser page and wait for terminal."""
@@ -210,32 +251,7 @@ class TerminalPreviewer:
 
     async def _dispatch_command(self, page, cmd):
         """Dispatch command to appropriate handler."""
-        if cmd.name == "Type":
-            await self._type_text(page, cmd.args[0] if cmd.args else "")
-        elif cmd.name == "Enter":
-            await page.keyboard.press("Enter")
-        elif cmd.name == "Escape":
-            await page.keyboard.press("Escape")
-        elif cmd.name == "Sleep":
-            await asyncio.sleep(self._parse_duration(cmd.args[0]) if cmd.args else 0.5)
-        elif cmd.name in ("Ctrl+l", "Clear"):
-            await page.keyboard.press("Control+l")
-
-    async def _type_text(self, page, text: str):
-        """Type text character by character."""
-        for char in text:
-            await page.keyboard.type(char, delay=0)
-            await asyncio.sleep(0.02)
-
-    def _parse_duration(self, duration_str: str) -> float:
-        """Parse duration string like '1s', '500ms', '0.5s'."""
-        duration_str = duration_str.strip().lower()
-        if duration_str.endswith("ms"):
-            return float(duration_str[:-2]) / 1000
-        elif duration_str.endswith("s"):
-            return float(duration_str[:-1])
-        else:
-            return float(duration_str)
+        await dispatch_terminal_command(page, cmd)
 
     async def _verify_checkpoint(
         self, page, checkpoint: Checkpoint, screenshot_dir: Path | None, checkpoint_num: int
@@ -288,8 +304,8 @@ class TerminalPreviewer:
         self, page, screenshot_dir: Path | None, checkpoint_num: int, event_type: str, passed: bool
     ) -> Path | None:
         """Capture screenshot if needed."""
-        should_screenshot = self.screenshots == "always" or (
-            self.screenshots == "on_error" and not passed
+        should_screenshot = self._state.screenshots == "always" or (
+            self._state.screenshots == "on_error" and not passed
         )
 
         if not should_screenshot or not screenshot_dir:
@@ -317,3 +333,148 @@ class TerminalPreviewer:
             return (min(line_numbers), max(line_numbers))
 
         return None
+
+
+class ScriptPreviewer:
+    """Previews a script with multiple segments (terminal and browser).
+
+    Provides frame-by-frame capture for debugging and verification.
+    Maintains continuous frame numbering across mode switches.
+    """
+
+    def __init__(
+        self,
+        rows: int = 30,
+        width: int = 1280,
+        height: int = 720,
+        screenshots: str = "on_error",
+        capture_frames: bool = False,
+    ):
+        self.rows = rows
+        self.width = width
+        self.height = height
+        self._ttyd_process = None
+        self._state = FrameCaptureState(capture_frames=capture_frames, screenshots=screenshots)
+
+    @property
+    def screenshots(self) -> str:
+        """Screenshots mode (for backward compatibility)."""
+        return self._state.screenshots
+
+    @property
+    def capture_frames(self) -> bool:
+        """Whether frame capture is enabled (for backward compatibility)."""
+        return self._state.capture_frames
+
+    def preview(
+        self, script_path: Path, segments: list, output_dir: Path | None = None
+    ) -> PreviewResult:
+        """Run preview across all segments and return results."""
+        return asyncio.run(self._preview_async(script_path, segments, output_dir))
+
+    async def _preview_async(
+        self, script_path: Path, segments: list, output_dir: Path | None
+    ) -> PreviewResult:
+        """Async preview for terminal and browser segments."""
+        setup_frames_dir(self._state, output_dir)
+        screenshot_dir = setup_screenshot_dir(self._state, output_dir)
+        init_start_time(self._state)
+        results = [await self._preview_segment(s, screenshot_dir) for s in segments]
+        return build_preview_result(sum(results, []), screenshot_dir, self._state)
+
+    async def _preview_segment(self, segment, screenshot_dir) -> list[CheckpointResult]:
+        """Preview a segment (terminal or browser)."""
+        if segment.mode == "terminal":
+            return await self._preview_terminal_segment(segment, screenshot_dir)
+        if segment.mode == "browser":
+            return await self._preview_browser_segment(segment, screenshot_dir)
+        return []
+
+    async def _preview_terminal_segment(
+        self, segment, screenshot_dir: Path | None
+    ) -> list[CheckpointResult]:
+        """Preview a terminal segment using ttyd."""
+        find_ttyd()
+        port = 7682
+
+        self._ttyd_process = start_ttyd(port)
+        await asyncio.sleep(0.5)
+
+        try:
+            return await self._run_terminal_session(port, segment, screenshot_dir)
+        finally:
+            stop_ttyd(self._ttyd_process)
+
+    async def _run_terminal_session(
+        self, port: int, segment, screenshot_dir: Path | None
+    ) -> list[CheckpointResult]:
+        """Run terminal session in browser."""
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await self._setup_terminal_page(browser, port)
+
+            if self._state.capture_frames and self._state.frames_dir:
+                await capture_frame(self._state, page, "terminal")
+
+            results = await self._execute_terminal_commands(page, segment)
+            await browser.close()
+        return results
+
+    async def _setup_terminal_page(self, browser, port: int):
+        """Set up browser page for terminal viewing."""
+        context = await browser.new_context(viewport={"width": self.width, "height": self.height})
+        page = await context.new_page()
+        await page.goto(f"http://localhost:{port}", wait_until="networkidle")
+        await page.wait_for_selector(".xterm-screen", timeout=10000)
+        await page.wait_for_function("() => window.term !== undefined", timeout=10000)
+        await asyncio.sleep(0.3)
+        await setup_container(page)
+        await fit_to_rows(page, self.rows, max_iterations=10, delay=0.1)
+        await page.keyboard.press("Control+l")
+        await asyncio.sleep(0.3)
+        return page
+
+    async def _execute_terminal_commands(self, page, segment) -> list[CheckpointResult]:
+        """Execute terminal commands with frame capture."""
+        for cmd in segment.commands:
+            await dispatch_terminal_command(page, cmd)
+            await asyncio.sleep(0.05)
+            if self._state.capture_frames and self._state.frames_dir:
+                await asyncio.sleep(0.05)
+                await capture_frame(self._state, page, "terminal")
+        return []
+
+    async def _preview_browser_segment(
+        self, segment, screenshot_dir: Path | None
+    ) -> list[CheckpointResult]:
+        """Preview a browser segment."""
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            context = await browser.new_context(
+                viewport={"width": self.width, "height": self.height},
+            )
+            page = await context.new_page()
+
+            if self._state.capture_frames and self._state.frames_dir:
+                await capture_frame(self._state, page, "browser")
+
+            results = await self._execute_browser_commands(page, segment)
+            await browser.close()
+        return results
+
+    async def _execute_browser_commands(self, page, segment) -> list[CheckpointResult]:
+        """Execute browser commands with frame capture."""
+        from .modes.browser import BROWSER_COMMANDS
+
+        for cmd in segment.commands:
+            handler = BROWSER_COMMANDS.get(cmd.name)
+            if handler:
+                await handler(page, cmd)
+            if self._state.capture_frames and self._state.frames_dir:
+                await asyncio.sleep(0.1)
+                await capture_frame(self._state, page, "browser")
+        return []

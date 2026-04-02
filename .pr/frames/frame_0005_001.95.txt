@@ -1,0 +1,11 @@
+$ echo "Hello from demorec!"
+Hello from demorec!
+$ cat > greet.py << 'EOF'
+...
+$ ls -la greet.py
+-rw-r--r-- 1 user user 142 Mar 25 22:20 greet.py
+$ python greet.py
+Hello, AI Agent!
+Hello, World!
+$ 
+

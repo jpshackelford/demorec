@@ -6,6 +6,7 @@ __pycache__/
 .DS_Store
 
 .demorec_preview/
+.agents_tmp/
 
 # But allow PR evidence videos
 !.pr/*.mp4

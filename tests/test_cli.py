@@ -7,7 +7,7 @@ Tests cover:
 - _parse_blocks
 - _output_directions
 - _get_screenshot_mode
-- _get_terminal_segment
+- _get_all_segments
 - CLI command structure
 """
 
@@ -21,8 +21,8 @@ from click.testing import CliRunner
 from demorec.cli import (
     EDGE_VOICES,
     ELEVEN_VOICES,
+    _get_all_segments,
     _get_screenshot_mode,
-    _get_terminal_segment,
     _output_directions,
     _parse_and_configure,
     _parse_blocks,
@@ -196,13 +196,11 @@ class TestGetScreenshotMode:
         assert _get_screenshot_mode(None) == "on_error"
 
 
-class TestGetTerminalSegment:
-    """Test _get_terminal_segment function."""
+class TestGetAllSegments:
+    """Test _get_all_segments function."""
 
-    def test_returns_terminal_segment(self):
-        """Should return first terminal segment with commands."""
-        from demorec.parser import Command
-
+    def test_returns_all_segments(self):
+        """Should return all segments with commands."""
         script = """
 @mode terminal
 Type "hello"
@@ -213,15 +211,20 @@ Enter
             path = Path(f.name)
 
         try:
-            segment = _get_terminal_segment(path)
-            assert segment.mode == "terminal"
-            assert len(segment.commands) > 0
+            segments = _get_all_segments(path)
+            assert len(segments) > 0
+            assert segments[0].mode == "terminal"
+            assert len(segments[0].commands) > 0
         finally:
             path.unlink()
 
-    def test_raises_for_no_terminal_segment(self):
-        """Should raise SystemExit if no terminal segment."""
+    def test_returns_mixed_segments(self):
+        """Should return terminal and browser segments."""
         script = """
+@mode terminal
+Type "hello"
+Enter
+
 @mode browser
 Navigate "https://example.com"
 """
@@ -230,8 +233,26 @@ Navigate "https://example.com"
             path = Path(f.name)
 
         try:
+            segments = _get_all_segments(path)
+            assert len(segments) == 2
+            modes = [s.mode for s in segments]
+            assert "terminal" in modes
+            assert "browser" in modes
+        finally:
+            path.unlink()
+
+    def test_raises_for_no_segments(self):
+        """Should raise SystemExit if no segments with commands."""
+        script = """
+# Just a comment, no commands
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".demorec", delete=False) as f:
+            f.write(script)
+            path = Path(f.name)
+
+        try:
             with pytest.raises(SystemExit):
-                _get_terminal_segment(path)
+                _get_all_segments(path)
         finally:
             path.unlink()
 

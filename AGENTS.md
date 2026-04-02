@@ -173,9 +173,41 @@ demorec record script.demorec -o output.mp4
 # Preview without recording
 demorec preview script.demorec
 
+# Preview with frame-by-frame capture (for AI debugging)
+demorec preview script.demorec --rows 30 -o ./frames
+
 # Calculate vim stage directions
 demorec stage file.py "10-20,30-40" --rows 30
 
 # Show all checkpoints
 demorec checkpoints script.demorec
 ```
+
+## Frame-by-Frame Capture
+
+The preview command supports frame-by-frame capture for AI agent debugging:
+
+```bash
+demorec preview script.demorec --rows 30 -o ./frames
+```
+
+**Output Files:**
+- Terminal segments → `frame_{NNNN}_{SSS.ss}.txt` (visible buffer text)
+- Browser segments → `frame_{NNNN}_{SSS.ss}.png` (screenshots)
+
+**Frame Naming:**
+- `NNNN`: 4-digit zero-padded frame number (0001, 0002, ...)
+- `SSS.ss`: Elapsed seconds with 2 decimals (000.00, 001.25, ...)
+
+**Key Classes:**
+- `TerminalPreviewer` - Terminal-only scripts with checkpoint verification
+- `ScriptPreviewer` - Multi-segment (terminal + browser) with frame capture
+- `FrameCaptureState` - Shared state for frame capture (in `frame_capture.py`)
+
+**CLI Behavior:**
+- Terminal-only scripts: Uses `TerminalPreviewer` with checkpoint verification
+- Scripts with browser segments: Uses `ScriptPreviewer` for multi-segment support
+
+**CLI Flags:**
+- `--output-dir / -o` - Enable frame capture to directory
+- `--frames / --no-frames` - Explicitly enable/disable frame capture

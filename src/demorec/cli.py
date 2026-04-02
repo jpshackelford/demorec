@@ -8,7 +8,7 @@ from rich.console import Console
 
 from . import __version__
 from .parser import Plan, parse_script
-from .preview import TerminalPreviewer
+from .preview import ScriptPreviewer, TerminalPreviewer
 from .runner import Runner
 from .stage import (
     calculate_stage_directions,
@@ -244,9 +244,20 @@ def checkpoints(script: Path, output_format: str):
     "--output-dir",
     "-o",
     type=click.Path(path_type=Path),
-    help="Directory for screenshots (default: .demorec_preview)",
+    help="Directory for screenshots and frames (default: .demorec_preview)",
 )
-def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path | None):
+@click.option(
+    "--frames/--no-frames",
+    default=None,
+    help="Enable/disable frame-by-frame capture (default: enabled when --output-dir set)",
+)
+def preview(
+    script: Path,
+    rows: int,
+    screenshots: bool | None,
+    output_dir: Path | None,
+    frames: bool | None,
+):
     """Preview a script and verify checkpoints.
 
     Runs through the script, automatically detecting "show moments" and
@@ -258,42 +269,58 @@ def preview(script: Path, rows: int, screenshots: bool | None, output_dir: Path 
       --screenshots    Always capture screenshots
       --no-screenshots Never capture screenshots
 
+    \b
+    Frame capture (for AI debugging):
+      When --output-dir is set, captures terminal state at every step.
+      Frame files: frame_{NNNN}_{SSS.ss}.txt (terminal) or .png (browser)
+      --frames     Force enable frame capture
+      --no-frames  Disable frame capture
+
     Examples:
 
         demorec preview script.demorec --rows 30
 
         demorec preview script.demorec --screenshots
 
-        demorec preview script.demorec --no-screenshots
+        demorec preview script.demorec -o ./frames
+
+        demorec preview script.demorec -o ./frames --no-frames
     """
-    console.print("[bold blue]demorec[/] preview")
-    console.print(f"[dim]Script:[/] {script}")
-    console.print(f"[dim]Terminal:[/] {rows} rows")
-
-    segment = _get_terminal_segment(script)
+    segments = _get_all_segments(script)
     screenshot_mode = _get_screenshot_mode(screenshots)
+    capture_frames = _get_capture_frames_mode(frames, output_dir)
+    has_browser = any(s.mode == "browser" for s in segments)
 
-    console.print(f"[dim]Screenshots:[/] {screenshot_mode}")
-    console.print()
-
-    result = _run_preview(script, segment, rows, screenshot_mode, output_dir)
+    _print_preview_header(script, rows, screenshot_mode, capture_frames, has_browser)
+    result = _run_preview(script, segments, rows, screenshot_mode, output_dir, capture_frames)
     _print_preview_results(result)
 
 
-def _get_terminal_segment(script: Path):
-    """Parse script and return first terminal segment."""
+def _print_preview_header(script, rows, screenshot_mode, capture_frames, has_browser):
+    """Print preview command header."""
+    console.print("[bold blue]demorec[/] preview")
+    console.print(f"[dim]Script:[/] {script}")
+    console.print(f"[dim]Terminal:[/] {rows} rows")
+    console.print(f"[dim]Screenshots:[/] {screenshot_mode}")
+    console.print(f"[dim]Frame capture:[/] {'enabled' if capture_frames else 'disabled'}")
+    console.print(f"[dim]Mode:[/] {'multi-segment' if has_browser else 'terminal-only'}")
+    console.print()
+
+
+def _get_all_segments(script: Path):
+    """Parse script and return all segments with commands."""
     try:
         plan = parse_script(script)
     except Exception as e:
         console.print(f"[bold red]Parse error:[/] {e}")
         raise SystemExit(1)
 
-    terminal_segments = [s for s in plan.segments if s.mode == "terminal" and s.commands]
-    if not terminal_segments:
-        console.print("[bold red]Error:[/] No terminal segments with commands found in script")
+    segments = [s for s in plan.segments if s.commands]
+    if not segments:
+        console.print("[bold red]Error:[/] No segments with commands found in script")
         raise SystemExit(1)
 
-    return terminal_segments[0]
+    return segments
 
 
 def _get_screenshot_mode(screenshots: bool | None) -> str:
@@ -305,21 +332,49 @@ def _get_screenshot_mode(screenshots: bool | None) -> str:
     return "on_error"
 
 
-def _run_preview(script, segment, rows, screenshot_mode, output_dir):
+def _get_capture_frames_mode(frames: bool | None, output_dir: Path | None) -> bool:
+    """Determine if frame capture should be enabled.
+
+    Default: enabled when --output-dir is set, unless --no-frames is specified.
+    """
+    if frames is True:
+        return True
+    elif frames is False:
+        return False
+    # Default: enable when output_dir is provided
+    return output_dir is not None
+
+
+def _run_preview(script, segments, rows, screenshot_mode, output_dir, capture_frames):
     """Run preview with progress spinner."""
     from rich.progress import Progress, SpinnerColumn, TextColumn
 
-    previewer = TerminalPreviewer(rows=rows, screenshots=screenshot_mode)
+    has_browser = any(s.mode == "browser" for s in segments)
+    previewer = _create_previewer(rows, screenshot_mode, capture_frames, has_browser)
+
     cols = [SpinnerColumn(), TextColumn("[progress.description]{task.description}")]
     with Progress(*cols, console=console) as p:
         p.add_task("Running preview...", total=None)
-        return _execute_preview(previewer, script, segment, output_dir)
+        return _execute_preview(previewer, script, segments, output_dir, has_browser)
 
 
-def _execute_preview(previewer, script, segment, output_dir):
+def _create_previewer(rows, screenshot_mode, capture_frames, has_browser):
+    """Create appropriate previewer based on segment types."""
+    if has_browser:
+        return ScriptPreviewer(
+            rows=rows, screenshots=screenshot_mode, capture_frames=capture_frames
+        )
+    return TerminalPreviewer(rows=rows, screenshots=screenshot_mode, capture_frames=capture_frames)
+
+
+def _execute_preview(previewer, script, segments, output_dir, has_browser):
     """Execute preview with error handling."""
     try:
-        return previewer.preview(script, segment, output_dir)
+        if has_browser:
+            return previewer.preview(script, segments, output_dir)
+        # Terminal-only: use first terminal segment for checkpoint verification
+        terminal_segment = next(s for s in segments if s.mode == "terminal")
+        return previewer.preview(script, terminal_segment, output_dir)
     except Exception as e:
         console.print(f"[bold red]Preview error:[/] {e}")
         raise SystemExit(1)
@@ -328,18 +383,27 @@ def _execute_preview(previewer, script, segment, output_dir):
 def _print_preview_results(result):
     """Print preview results and exit if failures."""
     console.print()
-
     for i, r in enumerate(result.results, 1):
         _print_checkpoint_result(i, r)
+    _print_frame_summary(result)
+    _print_final_summary(result)
 
+
+def _print_frame_summary(result):
+    """Print frame capture summary if frames were captured."""
+    if result.frame_count > 0 and result.frames_dir:
+        console.print(f"[dim]Frames captured: {result.frame_count} to {result.frames_dir}[/]")
+
+
+def _print_final_summary(result):
+    """Print final pass/fail summary and exit if failures."""
     if result.failed > 0:
         msg = f"[bold red]Summary: {result.passed}/{result.total} passed, {result.failed} failed[/]"
         console.print(msg)
         if result.screenshot_dir:
             console.print(f"[dim]Screenshots saved to: {result.screenshot_dir}[/]")
         raise SystemExit(1)
-    else:
-        console.print(f"[bold green]Summary: {result.passed}/{result.total} passed[/]")
+    console.print(f"[bold green]Summary: {result.passed}/{result.total} passed[/]")
 
 
 def _print_checkpoint_result(i: int, r):

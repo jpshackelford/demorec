@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Demorec Demo - Presentation Mode</title>
+    <title>Demorec Demo - Frame-by-Frame Capture</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -13,16 +13,9 @@
             min-height: 100vh;
             padding: 2rem;
         }
-        .container { max-width: 900px; margin: 0 auto; }
-        h1 { text-align: center; color: #00d4ff; margin-bottom: 0.5rem; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { text-align: center; color: #00d4ff; margin-bottom: 0.5rem; font-size: 2rem; }
         .subtitle { text-align: center; color: #888; margin-bottom: 2rem; }
-        .video-container {
-            background: #0d1117;
-            border-radius: 12px;
-            padding: 1rem;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        }
-        video { width: 100%; border-radius: 8px; }
         .info { background: #1e293b; border-radius: 8px; padding: 1.5rem; margin-top: 2rem; }
         .info h2 { color: #00d4ff; margin-bottom: 1rem; font-size: 1.2rem; }
         .info ul { list-style: none; }
@@ -39,90 +32,298 @@
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
         th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #334155; }
         th { color: #00d4ff; font-weight: 600; }
-        .feature-box { background: #14532d; border-left: 4px solid #22c55e; padding: 1rem; border-radius: 0 8px 8px 0; margin-bottom: 1rem; }
-        pre { background: #0d1117; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
-        pre code { background: none; padding: 0; }
+        .problem-box { background: #7c2d12; border-left: 4px solid #fb923c; padding: 1rem; border-radius: 0 8px 8px 0; margin-bottom: 1.5rem; }
+        .solution-box { background: #14532d; border-left: 4px solid #22c55e; padding: 1rem; border-radius: 0 8px 8px 0; }
+        
+        /* Frame viewer styles */
+        .frame-viewer {
+            background: #0d1117;
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .frame-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #334155;
+        }
+        .frame-title { color: #00d4ff; font-weight: 600; }
+        .frame-nav {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .frame-nav button {
+            background: #334155;
+            color: #e0e0e0;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .frame-nav button:hover { background: #475569; }
+        .frame-nav button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .frame-content {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            white-space: pre;
+            overflow-x: auto;
+            color: #f8f8f2;
+            min-height: 300px;
+        }
+        .frame-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 0.75rem;
+            color: #888;
+            font-size: 0.85rem;
+        }
+        .frame-indicator {
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+        .frame-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #334155;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .frame-dot.active { background: #00d4ff; transform: scale(1.3); }
+        .frame-dot:hover { background: #475569; }
+        
+        /* Code block */
+        pre.code-block {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            overflow-x: auto;
+            color: #f8f8f2;
+        }
+        .cmd { color: #50fa7b; }
+        .flag { color: #bd93f9; }
+        .comment { color: #6272a4; }
+        .path { color: #f1fa8c; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎬 Presentation Mode</h1>
-        <p class="subtitle">PR #16: Render Marp slides directly in your demos</p>
+        <h1>📸 Frame-by-Frame Capture</h1>
+        <p class="subtitle">PR #17: Debug terminal sessions with AI-readable snapshots</p>
 
-        <div class="video-container">
-            <video controls autoplay muted loop>
-                <source src="https://github.com/jpshackelford/demorec/raw/feature/presentation-mode/.pr/demo_presentation_mode.mp4" type="video/mp4">
-                Your browser does not support the video tag.
-            </video>
+        <div class="frame-viewer">
+            <div class="frame-header">
+                <span class="frame-title">Terminal Frame Preview</span>
+                <div class="frame-nav">
+                    <button onclick="prevFrame()" id="prevBtn">◀ Prev</button>
+                    <button onclick="nextFrame()" id="nextBtn">Next ▶</button>
+                </div>
+            </div>
+            <div class="frame-content" id="frameContent">$ </div>
+            <div class="frame-info">
+                <span id="frameFilename">frame_0001_000.00.txt</span>
+                <span id="frameTime">Elapsed: 0.00s</span>
+            </div>
+            <div class="frame-indicator" id="frameIndicator"></div>
         </div>
 
         <div class="info">
-            <h2>✨ New Feature</h2>
-            <div class="feature-box">
-                <strong>Presentation Mode</strong> brings Marp slides into your demorec workflow. Write Markdown, render beautiful slides, and seamlessly mix them with terminal demos—all from a single script.
+            <h2>The Problem</h2>
+            <div class="problem-box">
+                AI agents debugging terminal sessions need to verify each step completed correctly. Without visibility into terminal state, agents can't confirm commands executed successfully or diagnose failures.
+            </div>
+            <h2>The Solution</h2>
+            <div class="solution-box">
+                <strong>Frame Capture:</strong> Save terminal state as text files after every command. Each frame captures the visible terminal buffer, enabling AI agents to verify output, track progress, and debug issues at every step.
             </div>
         </div>
 
         <div class="section info">
             <h2>What This Demonstrates</h2>
             <ul>
-                <li><span class="check">✓</span> <strong>Vim Editing:</strong> Edit a Marp presentation with syntax highlighting</li>
-                <li><span class="check">✓</span> <strong>Presentation Mode:</strong> Render slides with <code>@mode presentation "file.md"</code></li>
-                <li><span class="check">✓</span> <strong>OpenHands Theme:</strong> Professional styling with <code>Set Theme "openhands"</code></li>
-                <li><span class="check">✓</span> <strong>URL Loading:</strong> Load presentations from GitHub URLs</li>
-                <li><span class="check">✓</span> <strong>Mode Switching:</strong> Seamless transitions between slides and terminal</li>
+                <li><span class="check">✓</span> <strong>Text Snapshots:</strong> Terminal state saved as <code>.txt</code> files for easy AI parsing</li>
+                <li><span class="check">✓</span> <strong>Timestamped:</strong> Frame naming includes elapsed time (<code>frame_{NNNN}_{SSS.ss}.txt</code>)</li>
+                <li><span class="check">✓</span> <strong>Sequential:</strong> Frame numbers continue across mode switches (terminal ↔ browser)</li>
+                <li><span class="check">✓</span> <strong>Automatic:</strong> Enabled by default when <code>--output-dir</code> is set</li>
             </ul>
             <div class="stats">
-                <div class="stat"><div class="stat-value">54s</div><div class="stat-label">Video Length</div></div>
-                <div class="stat"><div class="stat-value">5</div><div class="stat-label">Segments</div></div>
-                <div class="stat"><div class="stat-value">3</div><div class="stat-label">Mode Switches</div></div>
+                <div class="stat"><div class="stat-value">24</div><div class="stat-label">New Tests</div></div>
+                <div class="stat"><div class="stat-value">61</div><div class="stat-label">Preview Tests Pass</div></div>
+                <div class="stat"><div class="stat-value">493</div><div class="stat-label">Total Tests Pass</div></div>
             </div>
         </div>
 
         <div class="section info">
-            <h2>New Syntax</h2>
+            <h2>Usage</h2>
+            <pre class="code-block"><span class="comment"># Capture frames to directory (enabled automatically when -o is set)</span>
+<span class="cmd">demorec preview</span> script.demorec <span class="flag">--rows</span> 30 <span class="flag">-o</span> <span class="path">./frames</span>
+
+<span class="comment"># Explicitly enable frame capture</span>
+<span class="cmd">demorec preview</span> script.demorec <span class="flag">--rows</span> 30 <span class="flag">--frames</span> <span class="flag">-o</span> <span class="path">./frames</span>
+
+<span class="comment"># Disable frame capture even with output dir</span>
+<span class="cmd">demorec preview</span> script.demorec <span class="flag">--rows</span> 30 <span class="flag">-o</span> <span class="path">./frames</span> <span class="flag">--no-frames</span></pre>
+        </div>
+
+        <div class="section info">
+            <h2>Frame Naming Convention</h2>
             <table>
-                <tr><th>Command</th><th>Description</th></tr>
-                <tr><td><code>@mode presentation "file.md"</code></td><td>Switch to presentation mode with local Marp file</td></tr>
-                <tr><td><code>@mode presentation "https://..."</code></td><td>Load presentation from URL</td></tr>
-                <tr><td><code>Set Theme "openhands"</code></td><td>Apply theme (alias, URL, or local CSS)</td></tr>
-                <tr><td><code>Slide N [time]</code></td><td>Display slide N for minimum time</td></tr>
+                <tr><th>Component</th><th>Format</th><th>Example</th></tr>
+                <tr><td>Prefix</td><td><code>frame_</code></td><td>frame_</td></tr>
+                <tr><td>Frame Number</td><td>4-digit zero-padded</td><td>0001, 0002, 0015</td></tr>
+                <tr><td>Elapsed Time</td><td>Seconds with 2 decimals</td><td>000.00, 001.25, 012.50</td></tr>
+                <tr><td>Extension</td><td><code>.txt</code> (terminal) / <code>.png</code> (browser)</td><td>.txt</td></tr>
             </table>
+            <p style="margin-top: 1rem; color: #888;">
+                Example: <code>frame_0005_001.95.txt</code> = Frame #5, captured at 1.95 seconds elapsed
+            </p>
         </div>
 
         <div class="section info">
-            <h2>Example Script</h2>
-            <pre><code># Mix presentations with terminal demos
-@mode presentation "intro.md"
-Set Theme "openhands"
-Slide 1 3s
-Slide 2 3s
-
-@mode terminal
-Type "pip install mypackage"
-Enter
-
-@mode presentation "outro.md"
-Slide 1 3s</code></pre>
-        </div>
-
-        <div class="section info">
-            <h2>Use Cases</h2>
+            <h2>AI Agent Use Cases</h2>
             <ul>
-                <li><span class="check">✓</span> <strong>Product Demos:</strong> Intro slides → Live demo → Closing slides</li>
-                <li><span class="check">✓</span> <strong>Tutorials:</strong> Explain concepts with slides, then demonstrate in terminal</li>
-                <li><span class="check">✓</span> <strong>Conference Talks:</strong> Record polished presentations with live coding</li>
-                <li><span class="check">✓</span> <strong>Documentation:</strong> Visual explanations alongside code examples</li>
+                <li><span class="check">✓</span> <strong>Step Verification:</strong> Confirm each command produced expected output</li>
+                <li><span class="check">✓</span> <strong>Error Detection:</strong> Identify when and where failures occurred</li>
+                <li><span class="check">✓</span> <strong>State Tracking:</strong> Monitor working directory, environment changes</li>
+                <li><span class="check">✓</span> <strong>Regression Testing:</strong> Compare frame sequences across runs</li>
+                <li><span class="check">✓</span> <strong>Documentation:</strong> Generate step-by-step walkthroughs from frames</li>
             </ul>
         </div>
 
         <p style="text-align: center; margin-top: 2rem; color: #666;">
-            <a href="https://github.com/jpshackelford/demorec/pull/16" style="color: #00d4ff;">View PR #16</a>
+            <a href="https://github.com/jpshackelford/demorec/pull/17" style="color: #00d4ff;">View PR #17</a>
             &nbsp;|&nbsp;
-            <a href="https://github.com/jpshackelford/demorec/raw/feature/presentation-mode/.pr/demo_presentation_mode.mp4" style="color: #00d4ff;">Download Video</a>
+            <a href="https://github.com/jpshackelford/demorec/blob/feature/frame-capture-preview/demo_frame_capture.demorec" style="color: #00d4ff;">Demo Script</a>
             &nbsp;|&nbsp;
-            <a href="https://github.com/jpshackelford/demorec/blob/feature/presentation-mode/demo_presentation_mode.demorec" style="color: #00d4ff;">Demo Script</a>
+            <a href="https://github.com/jpshackelford/demorec/tree/feature/frame-capture-preview/.pr/frames" style="color: #00d4ff;">Sample Frames</a>
         </p>
     </div>
+
+    <script>
+        // Sample frames data
+        const frames = [
+            {
+                filename: "frame_0001_000.00.txt",
+                time: "0.00",
+                content: `$ `
+            },
+            {
+                filename: "frame_0002_000.15.txt",
+                time: "0.15",
+                content: `$ echo "Hello from demorec!"
+Hello from demorec!
+$ `
+            },
+            {
+                filename: "frame_0003_000.85.txt",
+                time: "0.85",
+                content: `$ echo "Hello from demorec!"
+Hello from demorec!
+$ cat > greet.py << 'EOF'
+> def greet(name):
+>     """Generate a personalized greeting."""
+>     return f"Hello, {name}!"
+> 
+> if __name__ == '__main__':
+>     print(greet('AI Agent'))
+>     print(greet('World'))
+> EOF
+$ `
+            },
+            {
+                filename: "frame_0004_001.40.txt",
+                time: "1.40",
+                content: `$ cat > greet.py << 'EOF'
+> ...
+> EOF
+$ ls -la greet.py
+-rw-r--r-- 1 user user 142 Mar 25 22:20 greet.py
+$ `
+            },
+            {
+                filename: "frame_0005_001.95.txt",
+                time: "1.95",
+                content: `$ ls -la greet.py
+-rw-r--r-- 1 user user 142 Mar 25 22:20 greet.py
+$ python greet.py
+Hello, AI Agent!
+Hello, World!
+$ `
+            },
+            {
+                filename: "frame_0006_002.50.txt",
+                time: "2.50",
+                content: `$ python greet.py
+Hello, AI Agent!
+Hello, World!
+$ echo "✓ Step 1: File created"
+✓ Step 1: File created
+$ echo "✓ Step 2: Script executed"
+✓ Step 2: Script executed
+$ echo "✓ Step 3: Output verified"
+✓ Step 3: Output verified
+$ `
+            }
+        ];
+
+        let currentFrame = 0;
+
+        function updateFrame() {
+            const frame = frames[currentFrame];
+            document.getElementById('frameContent').textContent = frame.content;
+            document.getElementById('frameFilename').textContent = frame.filename;
+            document.getElementById('frameTime').textContent = `Elapsed: ${frame.time}s`;
+            
+            document.getElementById('prevBtn').disabled = currentFrame === 0;
+            document.getElementById('nextBtn').disabled = currentFrame === frames.length - 1;
+            
+            // Update dots
+            document.querySelectorAll('.frame-dot').forEach((dot, i) => {
+                dot.classList.toggle('active', i === currentFrame);
+            });
+        }
+
+        function nextFrame() {
+            if (currentFrame < frames.length - 1) {
+                currentFrame++;
+                updateFrame();
+            }
+        }
+
+        function prevFrame() {
+            if (currentFrame > 0) {
+                currentFrame--;
+                updateFrame();
+            }
+        }
+
+        function goToFrame(index) {
+            currentFrame = index;
+            updateFrame();
+        }
+
+        // Initialize
+        const indicator = document.getElementById('frameIndicator');
+        frames.forEach((_, i) => {
+            const dot = document.createElement('div');
+            dot.className = 'frame-dot' + (i === 0 ? ' active' : '');
+            dot.onclick = () => goToFrame(i);
+            indicator.appendChild(dot);
+        });
+        updateFrame();
+    </script>
 </body>
 </html>

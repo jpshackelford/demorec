@@ -1,0 +1,65 @@
+# demo_frame_capture.demorec - Demonstrating frame-by-frame capture for AI debugging
+Output demo_frame_capture.mp4
+Set Width 1280
+Set Height 720
+
+# ────────────────────────────────────────────────────────
+# Demo: Frame-by-Frame Capture for AI Agent Debugging
+# ────────────────────────────────────────────────────────
+@mode terminal
+@terminal:rows 24
+Set Theme "Dracula"
+
+# First, show what frame capture does
+# @narrate:before "Frame capture saves terminal state after every command."
+Run "echo '📸 Frame Capture Demo'"
+Sleep 0.5s
+
+# Create a simple Python script to demonstrate
+Run "cat > greet.py << 'EOF'
+def greet(name):
+    '''Generate a personalized greeting.'''
+    return f\"Hello, {name}!\"
+
+if __name__ == '__main__':
+    print(greet('AI Agent'))
+    print(greet('World'))
+EOF"
+Sleep 0.5s
+
+# @narrate:before "Each command generates a frame file."
+Run "ls -la greet.py"
+Sleep 0.5s
+
+# Run the script
+# @narrate:before "Commands run in a real shell with real output."
+Run "python greet.py"
+Sleep 0.5s
+
+# Show some file navigation
+# @narrate:before "Perfect for debugging multi-step workflows."
+Run "head -4 greet.py"
+Sleep 0.5s
+
+Run "tail -3 greet.py"
+Sleep 0.5s
+
+# Demonstrate command history awareness
+# @narrate:before "AI agents can verify each step completed correctly."
+Run "echo '✓ Step 1: File created'"
+Sleep 0.3s
+
+Run "echo '✓ Step 2: Script executed'"
+Sleep 0.3s
+
+Run "echo '✓ Step 3: Output verified'"
+Sleep 0.5s
+
+# Cleanup
+Run "rm greet.py"
+Sleep 0.3s
+
+# Final message
+# @narrate:after "Frame capture enables AI debugging at every step!"
+Run "echo '🎬 Demo complete!'"
+Sleep 1s

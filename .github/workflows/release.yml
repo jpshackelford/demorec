@@ -70,18 +70,18 @@ jobs:
 
           **Install latest (recommended):**
           \`\`\`bash
-          pip install git+https://github.com/${{ github.repository }}.git
+          uv pip install git+https://github.com/${{ github.repository }}.git
           \`\`\`
 
           **Install this specific version:**
           \`\`\`bash
-          pip install git+https://github.com/${{ github.repository }}.git@${{ needs.release-please.outputs.tag_name }}
+          uv pip install git+https://github.com/${{ github.repository }}.git@${{ needs.release-please.outputs.tag_name }}
           \`\`\`
 
           **From wheel:**
           \`\`\`bash
           # Download the .whl file from Assets below, then:
-          pip install ./demorec-${{ needs.release-please.outputs.version }}-py3-none-any.whl
+          uv pip install ./demorec-${{ needs.release-please.outputs.version }}-py3-none-any.whl
           \`\`\`
 
           ## Usage
@@ -99,5 +99,5 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Install with:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "pip install git+https://github.com/${{ github.repository }}.git" >> $GITHUB_STEP_SUMMARY
+          echo "uv pip install git+https://github.com/${{ github.repository }}.git" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

@@ -81,6 +81,35 @@ demorec record my-demo.demorec
 
 ## Installation
 
+### System Dependencies
+
+demorec requires several system tools to be installed:
+
+| Dependency | Required | Purpose | Installation |
+|------------|----------|---------|--------------|
+| **FFmpeg** | ✅ Yes | Video/audio processing | `sudo apt install ffmpeg` (Ubuntu) or `brew install ffmpeg` (macOS) |
+| **ttyd** | ✅ Yes | Terminal PTY server | See below |
+| **tmux** | ✅ Yes | Persistent terminal sessions | `sudo apt install tmux` (Ubuntu) or `brew install tmux` (macOS) |
+| **Chromium** | ✅ Yes | Browser automation | Installed via `playwright install chromium` |
+| **vim** | Optional | Only for vim primitives (`Open`, `Highlight`, etc.) | `sudo apt install vim` (Ubuntu) or `brew install vim` (macOS) |
+| **Marp CLI** | Optional | Only for presentation mode | `npm install -g @marp-team/marp-cli` |
+
+#### Installing ttyd
+
+ttyd is a terminal sharing tool that provides the PTY backend. Install it with:
+
+```bash
+# Linux (x86_64)
+wget -qO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
+chmod +x /tmp/ttyd
+sudo mv /tmp/ttyd /usr/local/bin/ttyd
+
+# macOS
+brew install ttyd
+```
+
+### Python Package
+
 ```bash
 # With uv (recommended)
 uv tool install demorec
@@ -88,9 +117,19 @@ uv tool install demorec
 # Or with pip
 pip install demorec
 
-# Install browser dependencies
-demorec install
+# Install Playwright browser (Chromium)
+playwright install chromium
 ```
+
+### Optional: ElevenLabs TTS
+
+For premium voice quality, install the ElevenLabs extras:
+
+```bash
+pip install "demorec[tts]"
+```
+
+This requires an `ELEVENLABS_API_KEY` environment variable. Edge TTS (included by default) works without any API key.
 
 ## CLI Usage
 

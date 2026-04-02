@@ -429,6 +429,8 @@ Edge TTS works without any API key and is recommended for most use cases.
 
 **Key insight:** Both terminal and browser recording use Playwright. Terminal segments render via xterm.js in a headless browser, enabling seamless video concatenation.
 
+For detailed architecture documentation including terminal size management, persistent sessions, preview verification, and more, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+
 ## Examples
 
 ### Bug Fix Demo

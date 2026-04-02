@@ -16,6 +16,14 @@ Real-world demos often involve both terminal and browser:
 
 Existing tools make you record these separately and stitch manually. **demorec handles it all in one script.**
 
+### Key Features
+
+- **Unified Recording**: Seamlessly switch between terminal and browser in a single script
+- **Multiple Terminal Sessions**: Run servers, clients, and utilities in independent terminals (`@mode terminal:server`, `@mode terminal:client`)
+- **Persistent State**: Terminal state (working directory, environment variables, running processes) persists across mode switches
+- **AI Narration**: Add voiceover with Edge TTS (free) or ElevenLabs
+- **Vim Primitives**: High-level commands for code review demos (`Open`, `Highlight`, `Goto`, `Close`)
+
 ## Quick Example
 
 ```tape
@@ -73,6 +81,35 @@ demorec record my-demo.demorec
 
 ## Installation
 
+### System Dependencies
+
+demorec requires several system tools to be installed:
+
+| Dependency | Required | Purpose | Installation |
+|------------|----------|---------|--------------|
+| **FFmpeg** | ✅ Yes | Video/audio processing | `sudo apt install ffmpeg` (Ubuntu) or `brew install ffmpeg` (macOS) |
+| **ttyd** | ✅ Yes | Terminal PTY server | See below |
+| **tmux** | ✅ Yes | Persistent terminal sessions | `sudo apt install tmux` (Ubuntu) or `brew install tmux` (macOS) |
+| **Chromium** | ✅ Yes | Browser automation | Installed via `playwright install chromium` |
+| **vim** | Optional | Only for vim primitives (`Open`, `Highlight`, etc.) | `sudo apt install vim` (Ubuntu) or `brew install vim` (macOS) |
+| **Marp CLI** | Optional | Only for presentation mode | `npm install -g @marp-team/marp-cli` |
+
+#### Installing ttyd
+
+ttyd is a terminal sharing tool that provides the PTY backend. Install it with:
+
+```bash
+# Linux (x86_64)
+wget -qO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
+chmod +x /tmp/ttyd
+sudo mv /tmp/ttyd /usr/local/bin/ttyd
+
+# macOS
+brew install ttyd
+```
+
+### Python Package
+
 ```bash
 # With uv (recommended)
 uv tool install demorec
@@ -80,9 +117,19 @@ uv tool install demorec
 # Or with pip
 pip install demorec
 
-# Install browser dependencies
-demorec install
+# Install Playwright browser (Chromium)
+playwright install chromium
 ```
+
+### Optional: ElevenLabs TTS
+
+For premium voice quality, install the ElevenLabs extras:
+
+```bash
+pip install "demorec[tts]"
+```
+
+This requires an `ELEVENLABS_API_KEY` environment variable. Edge TTS (included by default) works without any API key.
 
 ## CLI Usage
 
@@ -279,34 +326,74 @@ Set Height 720               # Video height
 Set Framerate 30             # Video framerate
 ```
 
-### Mode Switching
+### Mode Switching & Multiple Terminal Sessions
+
+demorec supports switching between terminal and browser modes, with **persistent terminal sessions** that maintain state across mode switches.
 
 ```tape
-@mode terminal               # Switch to terminal recording (default session)
-@mode terminal:server        # Switch to named terminal session "server"
-@mode terminal:client        # Switch to named terminal session "client"
-@mode browser                # Switch to browser recording
+@mode terminal               # Default terminal session
+@mode terminal:server        # Named session "server" (independent)
+@mode terminal:client        # Named session "client" (independent)
+@mode browser                # Browser recording
 ```
 
-**Persistent Sessions:** Terminal state (working directory, environment variables, running processes) persists when switching between modes. Returning to the same terminal session reconnects to the existing shell—no state is lost.
+#### Session Persistence
 
-**Named Sessions:** Use `terminal:name` to create multiple independent terminal sessions. Each named session has its own isolated environment, perfect for server/client demos or multi-service workflows.
+Each terminal session is backed by tmux, which means:
 
-#### How It Works
+| What Persists | Example |
+|---------------|---------|
+| Working directory | `cd /app` stays in `/app` after switching modes |
+| Environment variables | `export API_KEY=xxx` remains set |
+| Running processes | `python server.py &` keeps running |
+| Command history | Up arrow recalls previous commands |
 
-Under the hood, demorec uses tmux to maintain persistent terminal sessions. When you switch from `terminal` to `browser` and back, you reconnect to the same tmux session with all your state intact.
+#### Named Sessions vs Default Session
+
+| Session | Syntax | Use Case |
+|---------|--------|----------|
+| Default | `@mode terminal` | General commands, setup |
+| Named | `@mode terminal:server` | Long-running server process |
+| Named | `@mode terminal:client` | Client/testing commands |
+| Named | `@mode terminal:logs` | Tail logs or monitoring |
+
+Named sessions are **completely independent**—each has its own shell process, environment, and working directory. The default session (`@mode terminal`) is also persistent but separate from named sessions.
+
+#### Typical Multi-Session Workflow
+
+```tape
+# 1. Start server in dedicated session
+@mode terminal:server
+Type "npm run dev"
+Enter
+Sleep 2s
+
+# 2. Switch to browser - server keeps running!
+@mode browser
+Navigate "http://localhost:3000"
+Sleep 2s
+
+# 3. Make API calls from client session
+@mode terminal:client  
+Type "curl localhost:3000/api/health"
+Enter
+
+# 4. Return to server session - see the request logs
+@mode terminal:server
+Sleep 1s
+```
 
 #### Tips for Effective Use
 
-1. **Set up state early:** Initialize environment variables and working directories at the start of your script—they'll persist throughout.
+1. **Set up state early:** Initialize environment variables and working directories at the start—they persist throughout.
 
-2. **Use named sessions for long-running processes:** Start servers in `terminal:server` so you can switch to other terminals or browser without killing them.
+2. **Use named sessions for servers:** Start long-running processes in `terminal:server` so switching modes won't kill them.
 
-3. **Show state preservation explicitly:** After switching modes, run commands like `pwd` or `echo $VAR` to demonstrate that state persisted—this creates an "aha!" moment for viewers.
+3. **Show state preservation explicitly:** Run `pwd` or `echo $VAR` after switching back to demonstrate persistence—viewers love this!
 
-4. **Clean up gracefully:** Use `Ctrl+C` in server terminals before the demo ends to show clean shutdown.
+4. **Clean up gracefully:** Use `Ctrl+C` in server terminals before ending to show clean shutdown.
 
-5. **Keep session names meaningful:** Use descriptive names like `terminal:api`, `terminal:frontend`, `terminal:logs` rather than generic names.
+5. **Use meaningful names:** Prefer `terminal:api`, `terminal:frontend`, `terminal:logs` over generic names.
 
 ### Terminal Commands
 
@@ -428,6 +515,8 @@ Edge TTS works without any API key and is recommended for most use cases.
 ```
 
 **Key insight:** Both terminal and browser recording use Playwright. Terminal segments render via xterm.js in a headless browser, enabling seamless video concatenation.
+
+For detailed architecture documentation including terminal size management, persistent sessions, preview verification, and more, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ## Examples
 

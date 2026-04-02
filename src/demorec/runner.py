@@ -17,6 +17,7 @@ from .audio import (
 )
 from .modes import vim as vim_module
 from .modes.browser import BrowserRecorder
+from .modes.presentation import PresentationRecorder
 from .modes.terminal import TerminalRecorder, TerminalSessionManager
 from .parser import Plan, Segment
 from .tts import get_audio_duration, get_tts_engine
@@ -57,11 +58,22 @@ class Runner:
                     return True
         return False
 
+    def _uses_presentation_mode(self) -> bool:
+        """Check if any segment uses presentation mode."""
+        return any(seg.mode == "presentation" for seg in self.plan.segments)
+
     def _run_preflight_checks(self) -> list[str]:
         """Run preflight checks before recording."""
         errors = []
         if self._uses_vim_primitives():
             errors.extend(vim_module.preflight_check())
+        if self._uses_presentation_mode():
+            from .marp import check_marp_installed
+
+            if not check_marp_installed():
+                errors.append(
+                    "Marp CLI not found. Install with: npm install -g @marp-team/marp-cli"
+                )
         return errors
 
     def run(self):
@@ -189,6 +201,8 @@ class Runner:
                 session_manager=self._session_manager,
                 session_name=segment.session_name,
             )
+        elif segment.mode == "presentation":
+            return PresentationRecorder(**base)
         return BrowserRecorder(**base)
 
     def _update_narration_times(self, timed_narrations: dict, timestamps: dict, offset: float):

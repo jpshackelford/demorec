@@ -1,9 +1,12 @@
 """Parser for .demorec script files."""
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -33,13 +36,16 @@ class Narration:
 class Segment:
     """A segment of commands in a single mode."""
 
-    mode: Literal["terminal", "browser"]
+    mode: Literal["terminal", "browser", "presentation"]
     session_name: str = "default"  # For terminal sessions (e.g., terminal:server)
     commands: list[Command] = field(default_factory=list)
     narrations: dict[int, Narration] = field(default_factory=dict)  # command_index -> narration
     # Terminal-specific settings
     size: Literal["large", "medium", "small", "tiny"] | None = None  # Display size preset
     rows: int | None = None  # Explicit row count (overrides size preset)
+    # Presentation-specific settings
+    presentation_file: str | None = None  # Path or URL to .md file
+    presentation_theme: str | None = None  # Path, URL, or alias to CSS theme
     # Runtime field: populated by Runner with TimedNarration objects
     # Type is dict[int, "TimedNarration"] but avoiding import to prevent circular deps
     timed_narrations: dict = field(default_factory=dict)
@@ -190,39 +196,63 @@ def _handle_set_directive(args: list[str], line_num: int, ctx: _ParseContext):
     if len(args) < 2:
         return
     key, val = args[0].lower(), args[1]
-    setters = {
-        "width": lambda: setattr(ctx.plan, "width", int(val)),
-        "height": lambda: setattr(ctx.plan, "height", int(val)),
-        "framerate": lambda: setattr(ctx.plan, "framerate", int(val)),
-    }
+    if not _try_set_plan_attr(key, val, ctx.plan):
+        _handle_set_theme(val, line_num, ctx)
+
+
+def _try_set_plan_attr(key: str, val: str, plan: Plan) -> bool:
+    """Try to set a plan attribute. Returns True if handled."""
+    setters = {"width": int, "height": int, "framerate": int}
     if key in setters:
-        setters[key]()
-    elif key == "theme" and ctx.current_segment:
+        setattr(plan, key, setters[key](val))
+        return True
+    return False
+
+
+def _handle_set_theme(val: str, line_num: int, ctx: _ParseContext):
+    """Handle Set Theme for current segment."""
+    if not ctx.current_segment:
+        return
+    if ctx.current_segment.mode == "presentation":
+        ctx.current_segment.presentation_theme = val
+    else:
         ctx.current_segment.commands.append(Command("SetTheme", [val], line_num))
 
 
 def _handle_mode_switch(args: list[str], ctx: _ParseContext):
-    """Handle @mode directive to switch recording modes.
-
-    Supports optional session names for terminal mode:
-    - @mode terminal -> default session
-    - @mode terminal:server -> named "server" session
-    - @mode browser -> browser mode (session_name ignored)
-    """
+    """Handle @mode directive to switch recording modes."""
     if not args:
         return
+    mode, session_name = _parse_mode_spec(args[0].lower())
+    segment = _create_mode_segment(mode, session_name, args)
+    if segment:
+        ctx.current_segment = segment
+        ctx.plan.segments.append(segment)
 
-    mode_spec = args[0].lower()
-    # Parse optional session name: terminal:server -> mode=terminal, session=server
+
+def _parse_mode_spec(mode_spec: str) -> tuple[str, str]:
+    """Parse mode spec like 'terminal:server' into (mode, session_name)."""
     if ":" in mode_spec:
         mode, session_name = mode_spec.split(":", 1)
         _validate_session_name(session_name)
-    else:
-        mode, session_name = mode_spec, "default"
+        return mode, session_name
+    return mode_spec, "default"
 
+
+VALID_MODES = {"terminal", "browser", "presentation"}
+
+
+def _create_mode_segment(mode: str, session_name: str, args: list[str]) -> Segment | None:
+    """Create a segment for the given mode."""
     if mode in ("terminal", "browser"):
-        ctx.current_segment = Segment(mode=mode, session_name=session_name)
-        ctx.plan.segments.append(ctx.current_segment)
+        return Segment(mode=mode, session_name=session_name)
+    if mode == "presentation":
+        file_path = parse_string(args[1]) if len(args) > 1 else None
+        return Segment(mode="presentation", presentation_file=file_path)
+    if mode not in VALID_MODES:
+        valid = ", ".join(sorted(VALID_MODES))
+        logger.warning("Unknown mode '%s' - ignoring. Valid modes: %s", mode, valid)
+    return None
 
 
 def _validate_session_name(name: str) -> None:

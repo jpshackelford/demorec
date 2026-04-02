@@ -46,7 +46,9 @@ def download_file(url: str, output_dir: Path, filename: str | None = None) -> Pa
     try:
         with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
             _download_with_limit(response, output_path)
-    except urllib.error.URLError as e:
+    except (urllib.error.URLError, ValueError) as e:
+        if output_path.exists():
+            output_path.unlink()  # Clean up partial file
         raise RuntimeError(f"Failed to download {url}: {e}") from e
     return output_path
 

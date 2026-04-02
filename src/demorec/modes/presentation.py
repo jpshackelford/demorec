@@ -1,6 +1,7 @@
 """Presentation recording mode using Marp + Playwright."""
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -8,6 +9,8 @@ from urllib.parse import quote
 from ..marp import render_to_html
 from ..parser import Command, Segment, parse_time
 from . import CommandExecutorMixin, convert_webm_to_mp4
+
+logger = logging.getLogger(__name__)
 
 # Timing constants
 SLIDE_TRANSITION_DELAY = 0.3  # Allow Marp CSS transitions to complete after navigation
@@ -20,7 +23,7 @@ async def _cmd_slide(page, cmd: Command, recorder: "PresentationRecorder"):
     await recorder._goto_slide(page, slide_num)
 
 
-async def _cmd_sleep(page, cmd: Command, recorder=None):
+async def _cmd_sleep(page, cmd: Command, recorder: "PresentationRecorder"):
     """Sleep for a duration."""
     if cmd.args:
         await asyncio.sleep(parse_time(cmd.args[0]))
@@ -128,10 +131,7 @@ class PresentationRecorder(CommandExecutorMixin):
         """Execute a single presentation command."""
         handler = PRESENTATION_COMMANDS.get(cmd.name)
         if handler:
-            if cmd.name == "Slide":
-                await handler(page, cmd, self)
-            else:
-                await handler(page, cmd)
+            await handler(page, cmd, self)
 
     def _finalize_video(self, output: Path):
         """Find and convert the recorded video."""
@@ -140,7 +140,7 @@ class PresentationRecorder(CommandExecutorMixin):
             latest = max(video_files, key=lambda f: f.stat().st_mtime)
             try:
                 convert_webm_to_mp4(latest, output)
-                latest.unlink()  # Only delete on successful conversion
+                latest.unlink()
             except Exception:
-                # Keep webm if conversion fails - don't lose the recording
+                logger.error("Conversion failed, webm preserved at %s", latest)
                 raise

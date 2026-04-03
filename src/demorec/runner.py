@@ -49,10 +49,12 @@ class Runner:
         # Session manager for persistent terminal sessions across mode switches
         self._session_manager = TerminalSessionManager()
 
-    def _uses_vim_primitives(self) -> bool:
-        """Check if any segment uses high-level vim primitives."""
+    def _uses_vim_submode(self) -> bool:
+        """Check if any segment uses vim submode or vim primitives."""
         vim_commands = {"Open", "Highlight", "Close", "Goto"}
         for segment in self.plan.segments:
+            if segment.submode == "vim":
+                return True
             for cmd in segment.commands:
                 if cmd.name in vim_commands:
                     return True
@@ -65,7 +67,7 @@ class Runner:
     def _run_preflight_checks(self) -> list[str]:
         """Run preflight checks before recording."""
         errors = []
-        if self._uses_vim_primitives():
+        if self._uses_vim_submode():
             errors.extend(vim_module.preflight_check())
         if self._uses_presentation_mode():
             from .marp import check_marp_installed
@@ -192,18 +194,27 @@ class Runner:
 
     def _create_recorder(self, segment: Segment):
         """Create appropriate recorder for segment mode."""
-        base = dict(width=self.plan.width, height=self.plan.height, framerate=self.plan.framerate)
+        base = self._base_recorder_config()
         if segment.mode == "terminal":
-            return TerminalRecorder(
-                **base,
-                size=segment.size,
-                rows=segment.rows,
-                session_manager=self._session_manager,
-                session_name=segment.session_name,
-            )
-        elif segment.mode == "presentation":
+            return self._create_terminal_recorder(segment, base)
+        if segment.mode == "presentation":
             return PresentationRecorder(**base)
         return BrowserRecorder(**base)
+
+    def _base_recorder_config(self) -> dict:
+        """Get base configuration for all recorders."""
+        return dict(width=self.plan.width, height=self.plan.height, framerate=self.plan.framerate)
+
+    def _create_terminal_recorder(self, segment: Segment, base: dict) -> TerminalRecorder:
+        """Create a terminal recorder with segment-specific settings."""
+        return TerminalRecorder(
+            **base,
+            size=segment.size,
+            rows=segment.rows,
+            session_manager=self._session_manager,
+            session_name=segment.session_name,
+            submode=segment.submode,
+        )
 
     def _update_narration_times(self, timed_narrations: dict, timestamps: dict, offset: float):
         """Update narration start times based on recorded timestamps."""

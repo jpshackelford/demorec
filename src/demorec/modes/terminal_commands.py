@@ -113,6 +113,31 @@ async def _cmd_ctrl_z(recorder, page, cmd):
     await _cmd_ctrl_key(recorder, page, cmd, "z")
 
 
+async def _cmd_ctrl_j(recorder, page, cmd):
+    """Ctrl+J - Submit multi-line input in OpenHands CLI."""
+    await _cmd_ctrl_key(recorder, page, cmd, "j")
+
+
+async def _cmd_ctrl_p(recorder, page, cmd):
+    """Ctrl+P - Open command palette in OpenHands CLI."""
+    await _cmd_ctrl_key(recorder, page, cmd, "p")
+
+
+async def _cmd_ctrl_q(recorder, page, cmd):
+    """Ctrl+Q - Quit OpenHands CLI."""
+    await _cmd_ctrl_key(recorder, page, cmd, "q")
+
+
+async def _cmd_ctrl_o(recorder, page, cmd):
+    """Ctrl+O - Toggle cells view in OpenHands CLI."""
+    await _cmd_ctrl_key(recorder, page, cmd, "o")
+
+
+async def _cmd_ctrl_x(recorder, page, cmd):
+    """Ctrl+X - Open external editor in OpenHands CLI."""
+    await _cmd_ctrl_key(recorder, page, cmd, "x")
+
+
 async def _cmd_tab(recorder, page, cmd):
     """Press Tab key."""
     await page.keyboard.press("Tab")
@@ -168,7 +193,12 @@ TERMINAL_COMMANDS = {
     "Sleep": _cmd_sleep,
     "Ctrl+C": _cmd_ctrl_c,
     "Ctrl+D": _cmd_ctrl_d,
+    "Ctrl+J": _cmd_ctrl_j,
     "Ctrl+L": _cmd_ctrl_l,
+    "Ctrl+O": _cmd_ctrl_o,
+    "Ctrl+P": _cmd_ctrl_p,
+    "Ctrl+Q": _cmd_ctrl_q,
+    "Ctrl+X": _cmd_ctrl_x,
     "Ctrl+Z": _cmd_ctrl_z,
     "Tab": _cmd_tab,
     "Up": _cmd_up,

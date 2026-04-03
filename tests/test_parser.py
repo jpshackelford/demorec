@@ -369,12 +369,13 @@ class TestHandleModeSwitch:
         _handle_mode_switch(["invalid"], ctx)
         assert ctx.current_segment is None
 
-    def test_terminal_with_named_session(self):
-        """Should parse terminal:session_name syntax."""
+    def test_terminal_with_submode(self):
+        """Should parse terminal:submode syntax."""
         ctx = _ParseContext(plan=Plan())
-        _handle_mode_switch(["terminal:server"], ctx)
+        _handle_mode_switch(["terminal:vim"], ctx)
         assert ctx.current_segment.mode == "terminal"
-        assert ctx.current_segment.session_name == "server"
+        assert ctx.current_segment.submode == "vim"
+        assert ctx.current_segment.session_name == "default"
 
     def test_terminal_with_default_session(self):
         """Should use 'default' session when not specified."""
@@ -382,35 +383,30 @@ class TestHandleModeSwitch:
         _handle_mode_switch(["terminal"], ctx)
         assert ctx.current_segment.session_name == "default"
 
-    def test_terminal_session_name_with_underscores(self):
-        """Should accept session names with underscores."""
+    def test_terminal_openhands_submode(self):
+        """Should parse terminal:openhands submode."""
         ctx = _ParseContext(plan=Plan())
-        _handle_mode_switch(["terminal:my_session"], ctx)
-        assert ctx.current_segment.session_name == "my_session"
+        _handle_mode_switch(["terminal:openhands"], ctx)
+        assert ctx.current_segment.mode == "terminal"
+        assert ctx.current_segment.submode == "openhands"
 
-    def test_terminal_session_name_with_dashes(self):
-        """Should accept session names with dashes."""
+    def test_terminal_unknown_submode_accepted(self):
+        """Should accept unknown submodes (for forward compatibility)."""
         ctx = _ParseContext(plan=Plan())
-        _handle_mode_switch(["terminal:my-session"], ctx)
-        assert ctx.current_segment.session_name == "my-session"
+        _handle_mode_switch(["terminal:future-tool"], ctx)
+        assert ctx.current_segment.submode == "future-tool"
 
-    def test_terminal_invalid_session_name_with_space(self):
-        """Should reject session names with invalid characters."""
+    def test_terminal_empty_submode(self):
+        """Should handle empty submode (just colon)."""
         ctx = _ParseContext(plan=Plan())
-        with pytest.raises(ValueError, match="Invalid session name"):
-            _handle_mode_switch(["terminal:my session"], ctx)
+        _handle_mode_switch(["terminal:"], ctx)
+        assert ctx.current_segment.submode == ""
 
-    def test_terminal_invalid_session_name_with_emoji(self):
-        """Should reject session names with emoji."""
+    def test_settings_mode_after_mode_switch(self):
+        """Should enter settings mode after @mode."""
         ctx = _ParseContext(plan=Plan())
-        with pytest.raises(ValueError, match="Invalid session name"):
-            _handle_mode_switch(["terminal:💩"], ctx)
-
-    def test_terminal_empty_session_name(self):
-        """Should reject empty session names."""
-        ctx = _ParseContext(plan=Plan())
-        with pytest.raises(ValueError, match="cannot be empty"):
-            _handle_mode_switch(["terminal:"], ctx)
+        _handle_mode_switch(["terminal:vim"], ctx)
+        assert ctx.in_settings_mode is True
 
 
 class TestHandleTerminalDirective:
@@ -716,6 +712,107 @@ Type "hello"
         try:
             plan = parse_script(path)
             assert plan.segments[0].rows == 30
+        finally:
+            path.unlink()
+
+    def test_parse_settings_with_blank_line_delimiter(self):
+        """Should parse settings followed by blank line then commands."""
+        script = """
+@mode terminal:vim
+rows 30
+theme "Dracula"
+
+Open "file.py"
+Highlight "6-8"
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".demorec", delete=False) as f:
+            f.write(script)
+            path = Path(f.name)
+
+        try:
+            plan = parse_script(path)
+            assert plan.segments[0].rows == 30
+            assert plan.segments[0].submode == "vim"
+            assert len(plan.segments[0].commands) == 3  # SetTheme, Open, Highlight
+        finally:
+            path.unlink()
+
+    def test_parse_settings_with_dash_delimiter(self):
+        """Should parse settings followed by --- then commands."""
+        script = """
+@mode terminal:openhands
+rows 24
+name "session1"
+---
+Install
+Start
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".demorec", delete=False) as f:
+            f.write(script)
+            path = Path(f.name)
+
+        try:
+            plan = parse_script(path)
+            assert plan.segments[0].rows == 24
+            assert plan.segments[0].session_name == "session1"
+            assert plan.segments[0].submode == "openhands"
+            assert len(plan.segments[0].commands) == 2  # Install, Start
+        finally:
+            path.unlink()
+
+    def test_parse_settings_blank_lines_after_delimiter(self):
+        """Should allow blank lines between commands after delimiter."""
+        script = """
+@mode terminal:vim
+rows 30
+---
+
+Open "file.py"
+
+Highlight "6-8"
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".demorec", delete=False) as f:
+            f.write(script)
+            path = Path(f.name)
+
+        try:
+            plan = parse_script(path)
+            assert len(plan.segments[0].commands) == 2  # Open, Highlight
+        finally:
+            path.unlink()
+
+    def test_parse_no_settings_direct_commands(self):
+        """Should handle mode with no settings, direct to commands."""
+        script = """
+@mode terminal
+
+Run "echo hello"
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".demorec", delete=False) as f:
+            f.write(script)
+            path = Path(f.name)
+
+        try:
+            plan = parse_script(path)
+            assert len(plan.segments[0].commands) == 1
+        finally:
+            path.unlink()
+
+    def test_parse_size_setting(self):
+        """Should parse size setting."""
+        script = """
+@mode terminal
+size large
+
+Type "hello"
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".demorec", delete=False) as f:
+            f.write(script)
+            path = Path(f.name)
+
+        try:
+            plan = parse_script(path)
+            assert plan.segments[0].size == "large"
         finally:
             path.unlink()
 

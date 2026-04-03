@@ -38,6 +38,7 @@ class Segment:
 
     mode: Literal["terminal", "browser", "presentation"]
     session_name: str = "default"  # For terminal sessions (e.g., terminal:server)
+    submode: str | None = None  # Tool-specific submode (e.g., "vim", "openhands")
     commands: list[Command] = field(default_factory=list)
     narrations: dict[int, Narration] = field(default_factory=dict)  # command_index -> narration
     # Terminal-specific settings
@@ -172,6 +173,7 @@ class _ParseContext:
     plan: Plan
     current_segment: Segment | None = None
     pending_narration: Narration | None = None
+    in_settings_mode: bool = False  # True after @mode until blank line or ---
 
 
 def _parse_comment(line: str, line_num: int, ctx: _ParseContext) -> bool:
@@ -223,29 +225,47 @@ def _handle_mode_switch(args: list[str], ctx: _ParseContext):
     """Handle @mode directive to switch recording modes."""
     if not args:
         return
-    mode, session_name = _parse_mode_spec(args[0].lower())
-    segment = _create_mode_segment(mode, session_name, args)
+    mode, session_name, submode = _parse_mode_spec(args[0].lower())
+    segment = _create_mode_segment(mode, session_name, submode, args)
     if segment:
         ctx.current_segment = segment
         ctx.plan.segments.append(segment)
+        ctx.in_settings_mode = True  # Enter settings mode after @mode
 
 
-def _parse_mode_spec(mode_spec: str) -> tuple[str, str]:
-    """Parse mode spec like 'terminal:server' into (mode, session_name)."""
-    if ":" in mode_spec:
-        mode, session_name = mode_spec.split(":", 1)
-        _validate_session_name(session_name)
-        return mode, session_name
-    return mode_spec, "default"
+# Known terminal sub-modes for tool-specific primitives
+TERMINAL_SUBMODES = {"vim", "openhands"}
+
+# Known segment settings (parsed after @mode, before commands)
+SEGMENT_SETTINGS = {"rows", "size", "theme", "name"}
+
+
+def _parse_mode_spec(mode_spec: str) -> tuple[str, str, str | None]:
+    """Parse mode spec into (mode, session_name, submode).
+
+    The colon after mode now always indicates a submode:
+    - 'terminal' -> ('terminal', 'default', None)
+    - 'terminal:vim' -> ('terminal', 'default', 'vim')
+    - 'terminal:openhands' -> ('terminal', 'default', 'openhands')
+
+    Session names are now specified via the 'name' setting after @mode.
+    """
+    if ":" not in mode_spec:
+        return mode_spec, "default", None
+
+    mode, submode = mode_spec.split(":", 1)
+    return mode, "default", submode
 
 
 VALID_MODES = {"terminal", "browser", "presentation"}
 
 
-def _create_mode_segment(mode: str, session_name: str, args: list[str]) -> Segment | None:
+def _create_mode_segment(
+    mode: str, session_name: str, submode: str | None, args: list[str]
+) -> Segment | None:
     """Create a segment for the given mode."""
     if mode in ("terminal", "browser"):
-        return Segment(mode=mode, session_name=session_name)
+        return Segment(mode=mode, session_name=session_name, submode=submode)
     if mode == "presentation":
         file_path = parse_string(args[1]) if len(args) > 1 else None
         return Segment(mode="presentation", presentation_file=file_path)
@@ -332,29 +352,125 @@ def parse_script(path: Path) -> Plan:
 
 def _parse_line(line: str, line_num: int, ctx: _ParseContext):
     """Parse a single line from the script."""
-    if not line:
+    if _handle_blank_or_delimiter(line, ctx):
         return
     if line.startswith("#"):
         _parse_comment(line, line_num, ctx)
         return
-
     tokens = tokenize_line(line)
     if tokens:
         _dispatch_command(tokens, line_num, ctx)
+
+
+def _handle_blank_or_delimiter(line: str, ctx: _ParseContext) -> bool:
+    """Handle blank lines and --- delimiter. Returns True if handled."""
+    if not line:
+        if ctx.in_settings_mode:
+            ctx.in_settings_mode = False
+        return True
+    if line == "---":
+        ctx.in_settings_mode = False
+        return True
+    return False
 
 
 def _dispatch_command(tokens: list[str], line_num: int, ctx: _ParseContext):
     """Dispatch a parsed command to the appropriate handler."""
     cmd_name, cmd_args = tokens[0], [parse_string(t) for t in tokens[1:]]
 
-    if cmd_name == "Output" and cmd_args:
-        ctx.plan.output = Path(cmd_args[0])
-    elif cmd_name == "Set":
-        _handle_set_directive(cmd_args, line_num, ctx)
-    elif cmd_name == "@mode":
-        _handle_mode_switch(cmd_args, ctx)
-    elif cmd_name.startswith("@terminal:"):
-        directive = cmd_name.split(":", 1)[1].lower()
-        _handle_terminal_directive(directive, cmd_args, ctx)
-    else:
-        _add_command(cmd_name, cmd_args, line_num, ctx)
+    if _handle_global_directive(cmd_name, cmd_args, line_num, ctx):
+        return
+    if _handle_settings_mode(cmd_name, cmd_args, line_num, ctx):
+        return
+    _warn_if_misplaced_setting(cmd_name, line_num, ctx)
+    if _handle_legacy_terminal_directive(cmd_name, cmd_args, ctx):
+        return
+    _add_command(cmd_name, cmd_args, line_num, ctx)
+
+
+def _handle_global_directive(name: str, args: list[str], line_num: int, ctx: _ParseContext) -> bool:
+    """Handle global directives (Output, Set, @mode). Returns True if handled."""
+    if name == "Output" and args:
+        ctx.plan.output = Path(args[0])
+        return True
+    if name == "Set":
+        _handle_set_directive(args, line_num, ctx)
+        return True
+    if name == "@mode":
+        _handle_mode_switch(args, ctx)
+        return True
+    return False
+
+
+def _handle_settings_mode(name: str, args: list[str], line_num: int, ctx: _ParseContext) -> bool:
+    """Handle settings mode parsing. Returns True if handled as setting."""
+    if not ctx.in_settings_mode:
+        return False
+    if _handle_segment_setting(name.lower(), args, line_num, ctx):
+        return True
+    ctx.in_settings_mode = False  # Not a setting - exit settings mode
+    return False
+
+
+def _handle_legacy_terminal_directive(name: str, args: list[str], ctx: _ParseContext) -> bool:
+    """Handle legacy @terminal: directives. Returns True if handled."""
+    if not name.startswith("@terminal:"):
+        return False
+    directive = name.split(":", 1)[1].lower()
+    _handle_terminal_directive(directive, args, ctx)
+    return True
+
+
+def _handle_segment_setting(name: str, args: list[str], line_num: int, ctx: _ParseContext) -> bool:
+    """Handle a segment setting. Returns True if handled."""
+    if name not in SEGMENT_SETTINGS or not ctx.current_segment:
+        return False
+    _apply_segment_setting(name, args, line_num, ctx)
+    return True
+
+
+def _apply_segment_setting(name: str, args: list[str], line_num: int, ctx: _ParseContext):
+    """Apply a segment setting to the current segment."""
+    if not args:
+        return
+    if name == "rows":
+        _apply_rows_setting(args[0], ctx)
+    elif name == "size":
+        _apply_size_setting(args[0].lower(), ctx)
+    elif name == "theme":
+        ctx.current_segment.commands.append(Command("SetTheme", args, line_num))
+    elif name == "name":
+        ctx.current_segment.session_name = args[0]
+
+
+def _apply_rows_setting(rows_str: str, ctx: _ParseContext):
+    """Apply rows setting to current segment."""
+    try:
+        rows = int(rows_str)
+        if 10 <= rows <= 100 and ctx.current_segment:
+            ctx.current_segment.rows = rows
+    except ValueError:
+        pass
+
+
+def _apply_size_setting(size: str, ctx: _ParseContext):
+    """Apply size preset to current segment."""
+    if size in ("large", "medium", "small", "tiny") and ctx.current_segment:
+        ctx.current_segment.size = size
+
+
+def _warn_if_misplaced_setting(cmd_name: str, line_num: int, ctx: _ParseContext):
+    """Warn if a setting name appears after commands have started."""
+    if cmd_name.lower() not in SEGMENT_SETTINGS:
+        return
+    if not ctx.current_segment:
+        return
+    if not ctx.current_segment.commands:
+        return  # No commands yet, might still be valid
+
+    logger.warning(
+        "Line %d: '%s' looks like a setting but appears after commands. "
+        "Settings must come immediately after @mode, before the first blank line or ---.",
+        line_num,
+        cmd_name,
+    )

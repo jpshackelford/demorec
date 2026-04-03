@@ -1,0 +1,25 @@
+# openhands_demo.demorec - Demo using OpenHands CLI primitives
+Output openhands_demo.mp4
+Set Width 1280
+Set Height 720
+
+# Use OpenHands CLI submode with settings
+@mode terminal:openhands
+rows 30
+theme "Dracula"
+---
+
+# Install OpenHands CLI (if not already installed)
+Install
+
+# Start the CLI
+Start
+
+# Send a simple prompt
+Prompt "Tell me a dad joke"
+
+# Send another prompt
+Prompt "Now tell me a programming joke"
+
+# Exit cleanly
+Quit

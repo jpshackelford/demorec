@@ -1,0 +1,31 @@
+# mixed_workflow.demorec - Demo showing vim and OpenHands CLI together
+Output mixed_workflow.mp4
+Set Width 1280
+Set Height 720
+
+# First, review the code in vim
+@mode terminal:vim
+rows 30
+theme "Dracula"
+
+Open "examples/sample_code.py"
+Highlight "4-7"
+Highlight "10-16"
+Close
+
+# Now ask OpenHands to improve it
+@mode terminal:openhands
+rows 30
+theme "Dracula"
+---
+
+Start
+Prompt "Refactor the User class in examples/sample_code.py to add validation"
+Quit
+
+# Verify the changes with plain terminal
+@mode terminal
+rows 30
+
+Run "cat examples/sample_code.py | head -30"
+Sleep 3s

@@ -46,6 +46,8 @@ class Segment:
     # Presentation-specific settings
     presentation_file: str | None = None  # Path or URL to .md file
     presentation_theme: str | None = None  # Path, URL, or alias to CSS theme
+    # Offscreen execution: commands run but video is not recorded
+    offscreen: bool = False
     # Runtime field: populated by Runner with TimedNarration objects
     # Type is dict[int, "TimedNarration"] but avoiding import to prevent circular deps
     timed_narrations: dict = field(default_factory=dict)
@@ -172,6 +174,7 @@ class _ParseContext:
     plan: Plan
     current_segment: Segment | None = None
     pending_narration: Narration | None = None
+    offscreen: bool = False  # Whether subsequent segments are offscreen
 
 
 def _parse_comment(line: str, line_num: int, ctx: _ParseContext) -> bool:
@@ -226,6 +229,7 @@ def _handle_mode_switch(args: list[str], ctx: _ParseContext):
     mode, session_name = _parse_mode_spec(args[0].lower())
     segment = _create_mode_segment(mode, session_name, args)
     if segment:
+        segment.offscreen = ctx.offscreen
         ctx.current_segment = segment
         ctx.plan.segments.append(segment)
 
@@ -296,14 +300,14 @@ def _set_terminal_attr(ctx: _ParseContext, attr: str, value):
     if ctx.current_segment and ctx.current_segment.mode == "terminal":
         setattr(ctx.current_segment, attr, value)
     elif ctx.current_segment is None:
-        ctx.current_segment = Segment(mode="terminal", **{attr: value})
+        ctx.current_segment = Segment(mode="terminal", offscreen=ctx.offscreen, **{attr: value})
         ctx.plan.segments.append(ctx.current_segment)
 
 
 def _ensure_segment(ctx: _ParseContext):
     """Ensure there's an active segment, defaulting to terminal."""
     if ctx.current_segment is None:
-        ctx.current_segment = Segment(mode="terminal")
+        ctx.current_segment = Segment(mode="terminal", offscreen=ctx.offscreen)
         ctx.plan.segments.append(ctx.current_segment)
 
 
@@ -343,18 +347,50 @@ def _parse_line(line: str, line_num: int, ctx: _ParseContext):
         _dispatch_command(tokens, line_num, ctx)
 
 
+def _handle_offscreen_directive(ctx: _ParseContext):
+    """Handle @offscreen directive to disable video recording.
+
+    Sets the context flag so subsequent segments are created offscreen.
+    Note: Does NOT modify current segment - offscreen applies to segments
+    created AFTER this directive, or if placed mid-segment, the current
+    segment was already recording so we don't retroactively change it.
+    """
+    ctx.offscreen = True
+
+
+def _handle_onscreen_directive(ctx: _ParseContext):
+    """Handle @onscreen directive to enable video recording.
+
+    Sets the context flag so subsequent segments are created onscreen.
+    Note: Does NOT modify current segment - onscreen applies to segments
+    created AFTER this directive.
+    """
+    ctx.offscreen = False
+
+
+def _handle_output(args: list[str], line_num: int, ctx: _ParseContext):
+    """Handle Output directive."""
+    if args:
+        ctx.plan.output = Path(args[0])
+
+
+# Dispatch table for directives
+_DIRECTIVE_HANDLERS = {
+    "Set": lambda args, ln, ctx: _handle_set_directive(args, ln, ctx),
+    "@mode": lambda args, ln, ctx: _handle_mode_switch(args, ctx),
+    "@offscreen": lambda args, ln, ctx: _handle_offscreen_directive(ctx),
+    "@onscreen": lambda args, ln, ctx: _handle_onscreen_directive(ctx),
+    "Output": _handle_output,
+}
+
+
 def _dispatch_command(tokens: list[str], line_num: int, ctx: _ParseContext):
     """Dispatch a parsed command to the appropriate handler."""
     cmd_name, cmd_args = tokens[0], [parse_string(t) for t in tokens[1:]]
 
-    if cmd_name == "Output" and cmd_args:
-        ctx.plan.output = Path(cmd_args[0])
-    elif cmd_name == "Set":
-        _handle_set_directive(cmd_args, line_num, ctx)
-    elif cmd_name == "@mode":
-        _handle_mode_switch(cmd_args, ctx)
+    if cmd_name in _DIRECTIVE_HANDLERS:
+        _DIRECTIVE_HANDLERS[cmd_name](cmd_args, line_num, ctx)
     elif cmd_name.startswith("@terminal:"):
-        directive = cmd_name.split(":", 1)[1].lower()
-        _handle_terminal_directive(directive, cmd_args, ctx)
+        _handle_terminal_directive(cmd_name.split(":", 1)[1].lower(), cmd_args, ctx)
     else:
         _add_command(cmd_name, cmd_args, line_num, ctx)

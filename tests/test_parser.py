@@ -31,6 +31,8 @@ from demorec.parser import (
     _dispatch_command,
     _ensure_segment,
     _handle_mode_switch,
+    _handle_offscreen_directive,
+    _handle_onscreen_directive,
     _handle_rows_directive,
     _handle_set_directive,
     _handle_size_directive,
@@ -718,6 +720,166 @@ Type "hello"
             assert plan.segments[0].rows == 30
         finally:
             path.unlink()
+
+    def test_parse_offscreen_segment(self):
+        """Should parse offscreen directive and mark segments."""
+        script = """
+@offscreen
+@mode terminal
+Type "setup"
+
+@onscreen
+@mode terminal
+Type "visible"
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".demorec", delete=False) as f:
+            f.write(script)
+            path = Path(f.name)
+
+        try:
+            plan = parse_script(path)
+            assert len(plan.segments) == 2
+            assert plan.segments[0].offscreen is True
+            assert plan.segments[1].offscreen is False
+        finally:
+            path.unlink()
+
+    def test_parse_offscreen_before_mode(self):
+        """Should mark segment created after offscreen directive."""
+        script = """
+@offscreen
+Type "setup"
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".demorec", delete=False) as f:
+            f.write(script)
+            path = Path(f.name)
+
+        try:
+            plan = parse_script(path)
+            assert len(plan.segments) == 1
+            assert plan.segments[0].offscreen is True
+        finally:
+            path.unlink()
+
+    def test_parse_offscreen_browser(self):
+        """Should support offscreen browser segments."""
+        script = """
+@offscreen
+@mode browser
+Navigate "http://localhost"
+Sleep 2s
+
+@onscreen
+@mode browser
+Click "#button"
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".demorec", delete=False) as f:
+            f.write(script)
+            path = Path(f.name)
+
+        try:
+            plan = parse_script(path)
+            assert len(plan.segments) == 2
+            assert plan.segments[0].mode == "browser"
+            assert plan.segments[0].offscreen is True
+            assert plan.segments[1].mode == "browser"
+            assert plan.segments[1].offscreen is False
+        finally:
+            path.unlink()
+
+
+class TestOffscreenDirectives:
+    """Test @offscreen and @onscreen directives."""
+
+    def test_offscreen_sets_context_flag(self):
+        """Should set offscreen flag in context."""
+        ctx = _ParseContext(plan=Plan())
+        assert ctx.offscreen is False
+        _handle_offscreen_directive(ctx)
+        assert ctx.offscreen is True
+
+    def test_onscreen_clears_context_flag(self):
+        """Should clear offscreen flag in context."""
+        ctx = _ParseContext(plan=Plan())
+        ctx.offscreen = True
+        _handle_onscreen_directive(ctx)
+        assert ctx.offscreen is False
+
+    def test_offscreen_does_not_update_current_segment(self):
+        """Should NOT update current segment's offscreen flag.
+
+        The offscreen directive applies to segments created AFTER it,
+        not to the segment that was already being recorded.
+        """
+        ctx = _ParseContext(plan=Plan())
+        ctx.current_segment = Segment(mode="terminal")
+        _handle_offscreen_directive(ctx)
+        # Current segment should remain onscreen (False)
+        assert ctx.current_segment.offscreen is False
+        # But context flag should be True for new segments
+        assert ctx.offscreen is True
+
+    def test_onscreen_does_not_update_current_segment(self):
+        """Should NOT update current segment's offscreen flag.
+
+        The onscreen directive applies to segments created AFTER it.
+        """
+        ctx = _ParseContext(plan=Plan())
+        ctx.current_segment = Segment(mode="terminal", offscreen=True)
+        _handle_onscreen_directive(ctx)
+        # Current segment should remain offscreen (True)
+        assert ctx.current_segment.offscreen is True
+        # But context flag should be False for new segments
+        assert ctx.offscreen is False
+
+    def test_mode_switch_inherits_offscreen(self):
+        """Should apply offscreen context to new segments."""
+        ctx = _ParseContext(plan=Plan())
+        _handle_offscreen_directive(ctx)
+        _handle_mode_switch(["terminal"], ctx)
+        assert ctx.current_segment.offscreen is True
+
+    def test_mode_switch_after_onscreen(self):
+        """Should not be offscreen after @onscreen."""
+        ctx = _ParseContext(plan=Plan())
+        _handle_offscreen_directive(ctx)
+        _handle_onscreen_directive(ctx)
+        _handle_mode_switch(["terminal"], ctx)
+        assert ctx.current_segment.offscreen is False
+
+    def test_dispatch_offscreen(self):
+        """Should dispatch @offscreen command."""
+        ctx = _ParseContext(plan=Plan())
+        _dispatch_command(["@offscreen"], 1, ctx)
+        assert ctx.offscreen is True
+
+    def test_dispatch_onscreen(self):
+        """Should dispatch @onscreen command."""
+        ctx = _ParseContext(plan=Plan())
+        ctx.offscreen = True
+        _dispatch_command(["@onscreen"], 1, ctx)
+        assert ctx.offscreen is False
+
+
+class TestSegmentOffscreen:
+    """Test Segment offscreen field."""
+
+    def test_segment_offscreen_default(self):
+        """Should default to False (onscreen)."""
+        segment = Segment(mode="terminal")
+        assert segment.offscreen is False
+
+    def test_segment_offscreen_explicit(self):
+        """Should accept explicit offscreen value."""
+        segment = Segment(mode="terminal", offscreen=True)
+        assert segment.offscreen is True
+
+    def test_ensure_segment_inherits_offscreen(self):
+        """Should create segment with context offscreen state."""
+        ctx = _ParseContext(plan=Plan())
+        ctx.offscreen = True
+        _ensure_segment(ctx)
+        assert ctx.current_segment.offscreen is True
 
 
 if __name__ == "__main__":

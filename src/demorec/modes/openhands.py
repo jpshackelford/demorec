@@ -23,6 +23,7 @@ Example usage in .demorec:
     Quit
 """
 
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,15 +58,20 @@ def preflight_check() -> list[str]:
     Called before recording begins to ensure dependencies are ready.
 
     Note: If Install command is used, CLI installation is not required.
-    LLM configuration is always required.
+    LLM configuration is required unless using --override-with-envs flag.
     """
     errors = []
 
-    if not check_llm_configured():
+    # Check if LLM is configured via settings file OR environment variables
+    has_env_config = all(os.environ.get(v) for v in ("LLM_MODEL", "LLM_API_KEY", "LLM_BASE_URL"))
+    has_settings_config = check_llm_configured()
+
+    if not has_env_config and not has_settings_config:
         errors.append(
             "OpenHands LLM not configured. Please configure LLM settings:\n"
-            "  Run 'openhands' to go through first-time setup, or\n"
-            "  Create ~/.openhands/agent_settings.json with your LLM config"
+            "  1. Run 'openhands' to go through first-time setup, or\n"
+            "  2. Set LLM_MODEL, LLM_API_KEY, LLM_BASE_URL environment variables,\n"
+            "     and use --override-with-envs flag when starting the CLI"
         )
 
     return errors

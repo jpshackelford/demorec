@@ -209,6 +209,24 @@ class TerminalRecorder(CommandExecutorMixin):
 
         return asyncio.run(self._record_async(segment, output))
 
+    def execute(self, segment: Segment) -> None:
+        """Execute terminal commands without video recording (offscreen mode).
+
+        Used for setup commands that should run but not appear in the final video.
+        Session state is preserved via the session_manager.
+
+        Args:
+            segment: The segment to execute
+        """
+        self._timed_narrations = {}
+
+        if not check_ttyd():
+            from ..ttyd import find_ttyd
+
+            find_ttyd()  # Raises with install instructions
+
+        asyncio.run(self._execute_async(segment))
+
     def _apply_theme_from_segment(self, segment: Segment):
         """Apply theme settings from segment commands."""
         for cmd in segment.commands:
@@ -368,6 +386,32 @@ class TerminalRecorder(CommandExecutorMixin):
                 self._cleanup_ttyd()
         self._finalize_video(output, trim_start=setup_dur)
         return timestamps
+
+    async def _execute_async(self, segment: Segment) -> None:  # length-ok: atomic transaction
+        """Execute commands without recording (offscreen mode)."""
+        self._apply_theme_from_segment(segment)
+        port, owns_session = await self._setup_session()
+        try:
+            await self._run_offscreen_session(segment, port)
+        finally:
+            if owns_session:
+                self._cleanup_ttyd()
+
+    async def _run_offscreen_session(self, segment: Segment, port: int) -> None:
+        """Run commands in browser without video recording."""
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            context = await browser.new_context(
+                viewport={"width": self.width, "height": self.height},
+            )
+            page = await context.new_page()
+            await self._wait_for_terminal(page, port)
+            await self._setup_terminal(page)
+            await self._clear_terminal(page)
+            await self._execute_commands(page, segment)
+            await context.close()
 
     async def _send_keys(self, page, text: str, delay: float = None):
         """Send keystrokes to the terminal."""

@@ -1,0 +1,62 @@
+# Offscreen Setup Demo
+# Demonstrates @offscreen/@onscreen directives for pre-recording setup
+#
+# This script shows how to:
+# - Set up environment without cluttering the video
+# - Pre-load browser pages
+# - Start background services
+# - The actual demo then starts cleanly
+
+Output offscreen-demo.mp4
+Set Width 1280
+Set Height 720
+
+# ═══════════════════════════════════════════════════
+# OFFSCREEN: Set up environment (not recorded)
+# ═══════════════════════════════════════════════════
+@offscreen
+
+# Set up the terminal environment
+@mode terminal
+Type "cd /tmp && mkdir -p demo-app"
+Enter
+Sleep 500ms
+Type "export APP_ENV='production'"
+Enter
+Sleep 500ms
+
+# Start a background server (if needed)
+@mode terminal:server
+Type "cd /tmp/demo-app && echo '<h1>Hello Demo!</h1>' > index.html"
+Enter
+Sleep 500ms
+Type "python3 -m http.server 12001 &"
+Enter
+Sleep 2s
+
+# Pre-load the browser page
+@mode browser
+Navigate "https://work-2-pvwzoniailetrtms.prod-runtime.all-hands.dev/"
+Sleep 3s
+
+# ═══════════════════════════════════════════════════
+# ONSCREEN: The actual demo (recorded)
+# ═══════════════════════════════════════════════════
+@onscreen
+
+# Now the recording starts with everything ready
+@mode terminal
+# @narrate:before "The environment is already set up"
+Type "echo $APP_ENV"
+Enter
+Sleep 1s
+Type "pwd"
+Enter
+Sleep 1s
+
+# Switch to browser - page is already loaded!
+@mode browser
+# @narrate:before "The web interface is ready to go"
+Sleep 2s
+Scroll down 200
+Sleep 1s

@@ -1,0 +1,70 @@
+1
+00:00:00,002 --> 00:00:03,218
+Let's look at the script powering this
+demo.
+
+2
+00:00:10,721 --> 00:00:14,945
+The header sets output file, dimensions,
+and voice.
+
+3
+00:00:19,653 --> 00:00:26,589
+Here's the magic—the at-offscreen
+directive. Everything below it runs but is
+NOT recorded.
+
+4
+00:00:31,300 --> 00:00:39,052
+This creates a terminal session called
+joke one and echoes a dad joke. The viewer
+never sees this happen.
+
+5
+00:00:43,764 --> 00:00:49,692
+Same for joke two—another named session,
+another joke, all invisible to the viewer.
+
+6
+00:00:54,400 --> 00:01:01,192
+And joke three. Three terminal sessions,
+three dad jokes, zero video footage.
+
+7
+00:01:05,906 --> 00:01:12,506
+Then at-onscreen starts the recording.
+From here on, everything goes into the
+video.
+
+8
+00:01:17,330 --> 00:01:26,138
+Later in the script, we switch back to
+each joke terminal. The jokes are already
+there—pre-loaded during offscreen setup.
+
+9
+00:01:30,483 --> 00:01:36,411
+Joke one was set up offscreen. You never
+saw it happen, but here it is.
+
+10
+00:01:39,723 --> 00:01:45,723
+Joke two, same story. Prepared in advance,
+revealed on cue.
+
+11
+00:01:49,043 --> 00:01:54,443
+And joke three. All the setup happened
+before you started watching.
+
+12
+00:01:54,884 --> 00:01:59,636
+Offscreen directives let you prepare
+everything before the camera rolls.
+
+13
+00:02:08,117 --> 00:02:16,637
+Install dependencies, start servers,
+pre-load pages—all invisible to viewers.
+Welcome to cleaner demos.
+

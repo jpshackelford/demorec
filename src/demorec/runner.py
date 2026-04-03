@@ -16,7 +16,7 @@ from .audio import (
     write_concat_file,
 )
 from .modes import vim as vim_module
-from .modes.browser import BrowserRecorder
+from .modes.browser import BrowserContextManager, BrowserRecorder
 from .modes.presentation import PresentationRecorder
 from .modes.terminal import TerminalRecorder, TerminalSessionManager
 from .parser import Plan, Segment
@@ -45,9 +45,11 @@ class Runner:
         self.temp_dir = Path(tempfile.mkdtemp(prefix="demorec_"))
         self.segment_files: list[Path] = []
         self.timed_narrations: list[TimedNarration] = []
-        self.has_narration = any(seg.narrations for seg in plan.segments)
+        self.has_narration = any(seg.narrations for seg in plan.segments if not seg.offscreen)
         # Session manager for persistent terminal sessions across mode switches
         self._session_manager = TerminalSessionManager()
+        # Context manager for persistent browser state across mode switches
+        self._browser_context_manager = BrowserContextManager()
 
     def _uses_vim_primitives(self) -> bool:
         """Check if any segment uses high-level vim primitives."""
@@ -113,16 +115,24 @@ class Runner:
             progress.update(task, completed=True)
 
     def _run_recording_phase(self, progress):
-        """Record all segments."""
+        """Record all segments (onscreen) or execute without recording (offscreen)."""
         time_offset = 0.0
         for i, segment in enumerate(self.plan.segments):
-            desc = f"Recording segment {i + 1}/{len(self.plan.segments)} ({segment.mode})..."
-            task = progress.add_task(desc, total=None)
-            segment_file = self.temp_dir / f"segment_{i:03d}.mp4"
-            segment_duration = self._record_segment(segment, segment_file, time_offset)
+            time_offset = self._process_segment(progress, i, segment, time_offset)
+
+    def _process_segment(self, progress, idx: int, segment: Segment, time_offset: float) -> float:
+        """Process a single segment (record or execute offscreen)."""
+        total = len(self.plan.segments)
+        if segment.offscreen:
+            task = progress.add_task(f"Offscreen {idx + 1}/{total} ({segment.mode})...", total=None)
+            self._execute_segment(segment)
+        else:
+            task = progress.add_task(f"Recording {idx + 1}/{total} ({segment.mode})...", total=None)
+            segment_file = self.temp_dir / f"segment_{idx:03d}.mp4"
+            time_offset += self._record_segment(segment, segment_file, time_offset)
             self.segment_files.append(segment_file)
-            time_offset += segment_duration
-            progress.update(task, completed=True)
+        progress.update(task, completed=True)
+        return time_offset
 
     def _run_concat_phase(self, progress) -> Path:
         """Concatenate segments if needed, return output path."""
@@ -182,6 +192,11 @@ class Runner:
         """Attach timed narration to segment for recorder."""
         segment.timed_narrations[cmd_idx] = timed
 
+    def _execute_segment(self, segment: Segment) -> None:
+        """Execute a segment without recording (offscreen mode)."""
+        executor = self._create_recorder(segment)
+        executor.execute(segment)
+
     def _record_segment(self, segment: Segment, output: Path, time_offset: float = 0.0) -> float:
         """Record a single segment and return its duration."""
         timed_narrations = segment.timed_narrations
@@ -203,7 +218,7 @@ class Runner:
             )
         elif segment.mode == "presentation":
             return PresentationRecorder(**base)
-        return BrowserRecorder(**base)
+        return BrowserRecorder(**base, context_manager=self._browser_context_manager)
 
     def _update_narration_times(self, timed_narrations: dict, timestamps: dict, offset: float):
         """Update narration start times based on recorded timestamps."""
@@ -242,11 +257,14 @@ class Runner:
         ]
 
     def cleanup(self):
-        """Remove temporary files and stop all terminal sessions."""
+        """Remove temporary files and stop all terminal/browser sessions."""
         # Stop terminal sessions first (must run even if temp cleanup fails)
         try:
             self._session_manager.cleanup()
         finally:
-            # Remove temporary files
-            if self.temp_dir.exists():
-                shutil.rmtree(self.temp_dir)
+            try:
+                self._browser_context_manager.cleanup_sync()
+            finally:
+                # Remove temporary files
+                if self.temp_dir.exists():
+                    shutil.rmtree(self.temp_dir)

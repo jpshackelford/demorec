@@ -107,17 +107,36 @@ BROWSER_COMMANDS = {
 class BrowserRecorder(CommandExecutorMixin):
     """Records browser sessions using Playwright."""
 
-    def __init__(self, width: int = 1280, height: int = 720, framerate: int = 30):
+    def __init__(
+        self,
+        width: int = 1280,
+        height: int = 720,
+        framerate: int = 30,
+        context_manager: "BrowserContextManager | None" = None,
+    ):
         self.width = width
         self.height = height
         self.framerate = framerate
         self._timed_narrations = {}
+        self.context_manager = context_manager
 
     def record(self, segment: Segment, output: Path, timed_narrations: dict = None):
         """Record a browser segment to video. Returns command timestamps."""
         output = output.absolute()
         self._timed_narrations = timed_narrations or {}
         return asyncio.run(self._record_async(segment, output))
+
+    def execute(self, segment: Segment) -> None:
+        """Execute browser commands without video recording (offscreen mode).
+
+        Used for setup commands (loading pages, logging in) that should run but
+        not appear in the final video. Browser state is preserved via context_manager.
+
+        Args:
+            segment: The segment to execute
+        """
+        self._timed_narrations = {}
+        asyncio.run(self._execute_async(segment))
 
     async def _record_async(self, segment: Segment, output: Path) -> dict[int, tuple[float, float]]:
         from playwright.async_api import async_playwright
@@ -129,6 +148,27 @@ class BrowserRecorder(CommandExecutorMixin):
 
         self._finalize_video(output)
         return timestamps
+
+    async def _execute_async(self, segment: Segment) -> None:
+        """Execute commands without recording (offscreen mode)."""
+        if self.context_manager is not None:
+            page = await self.context_manager.get_or_create_page(self.width, self.height)
+            await self._execute_commands(page, segment)
+        else:
+            await self._run_standalone_offscreen(segment)
+
+    async def _run_standalone_offscreen(self, segment: Segment) -> None:
+        """Run offscreen without context manager (standalone mode)."""
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            context = await browser.new_context(
+                viewport={"width": self.width, "height": self.height},
+            )
+            page = await context.new_page()
+            await self._execute_commands(page, segment)
+            await context.close()
 
     async def _create_browser_context(self, playwright, output: Path):
         """Create browser context with video recording."""
@@ -153,3 +193,56 @@ class BrowserRecorder(CommandExecutorMixin):
         handler = BROWSER_COMMANDS.get(cmd.name)
         if handler:
             await handler(page, cmd)
+
+
+class BrowserContextManager:
+    """Manages a persistent browser context for offscreen execution.
+
+    Similar to TerminalSessionManager but for browser state (cookies, storage,
+    page state). Allows pages loaded offscreen to persist for onscreen recording.
+    """
+
+    def __init__(self):
+        self._playwright = None
+        self._browser = None
+        self._context = None
+        self._page = None
+
+    async def get_or_create_page(self, width: int, height: int):
+        """Get existing page or create new context/page."""
+        if self._page is not None:
+            return self._page
+
+        from playwright.async_api import async_playwright
+
+        self._playwright = await async_playwright().start()
+        self._browser = await self._playwright.chromium.launch()
+        self._context = await self._browser.new_context(
+            viewport={"width": width, "height": height},
+        )
+        self._page = await self._context.new_page()
+        return self._page
+
+    async def get_storage_state(self) -> dict | None:
+        """Get current storage state (cookies, local storage) for transfer."""
+        if self._context is None:
+            return None
+        return await self._context.storage_state()
+
+    async def cleanup(self) -> None:
+        """Close browser and clean up resources."""
+        if self._context:
+            await self._context.close()
+            self._context = None
+            self._page = None
+        if self._browser:
+            await self._browser.close()
+            self._browser = None
+        if self._playwright:
+            await self._playwright.stop()
+            self._playwright = None
+
+    def cleanup_sync(self) -> None:
+        """Synchronous cleanup wrapper."""
+        if self._playwright is not None:
+            asyncio.run(self.cleanup())

@@ -1,0 +1,250 @@
+# offscreen-feature-demo.demorec
+# A demo proving @offscreen/@onscreen directives work
+# This script sets up dad jokes offscreen, then shows them onscreen
+Output offscreen-feature-demo.mp4
+Set Width 1280
+Set Height 720
+
+# @voice edge:en-US-AriaNeural
+
+# ═══════════════════════════════════════════════════
+# OFFSCREEN: Set up terminal sessions with dad jokes
+# (This happens before recording - viewers won't see it!)
+# ═══════════════════════════════════════════════════
+@offscreen
+
+@mode terminal:joke1
+Type "clear"
+Enter
+Sleep 200ms
+Type "echo '═══════════════════════════════════════'"
+Enter
+Sleep 100ms
+Type "echo '     DAD JOKE #1: The Calendar'"
+Enter
+Sleep 100ms
+Type "echo '═══════════════════════════════════════'"
+Enter
+Sleep 100ms
+Type "echo ''"
+Enter
+Sleep 100ms
+Type "echo 'Why did the calendar break up with the clock?'"
+Enter
+Sleep 100ms
+Type "echo ''"
+Enter
+Sleep 100ms
+Type "echo '...Their days were numbered!'"
+Enter
+Sleep 100ms
+Type "echo ''"
+Enter
+Sleep 200ms
+
+@mode terminal:joke2
+Type "clear"
+Enter
+Sleep 200ms
+Type "echo '═══════════════════════════════════════'"
+Enter
+Sleep 100ms
+Type "echo '     DAD JOKE #2: The Bicycle'"
+Enter
+Sleep 100ms
+Type "echo '═══════════════════════════════════════'"
+Enter
+Sleep 100ms
+Type "echo ''"
+Enter
+Sleep 100ms
+Type "echo 'Why can''t a bicycle stand on its own?'"
+Enter
+Sleep 100ms
+Type "echo ''"
+Enter
+Sleep 100ms
+Type "echo '...Because it''s two-tired!'"
+Enter
+Sleep 100ms
+Type "echo ''"
+Enter
+Sleep 200ms
+
+@mode terminal:joke3
+Type "clear"
+Enter
+Sleep 200ms
+Type "echo '═══════════════════════════════════════'"
+Enter
+Sleep 100ms
+Type "echo '     DAD JOKE #3: The Programmer'"
+Enter
+Sleep 100ms
+Type "echo '═══════════════════════════════════════'"
+Enter
+Sleep 100ms
+Type "echo ''"
+Enter
+Sleep 100ms
+Type "echo 'Why do programmers prefer dark mode?'"
+Enter
+Sleep 100ms
+Type "echo ''"
+Enter
+Sleep 100ms
+Type "echo '...Because light attracts bugs!'"
+Enter
+Sleep 100ms
+Type "echo ''"
+Enter
+Sleep 200ms
+
+# ═══════════════════════════════════════════════════
+# ONSCREEN: The video starts here!
+# ═══════════════════════════════════════════════════
+@onscreen
+
+# --- Walk through this script in vim ---
+@mode terminal
+Set Theme "Dracula"
+
+# @narrate:before "Let's look at the script powering this demo."
+Type "vim offscreen-feature-demo.demorec"
+Enter
+Sleep 1s
+
+Type ":set number"
+Enter
+Sleep 500ms
+
+# Show the top - output settings
+Type "1G"
+Sleep 200ms
+Type "V"
+Type "7G"
+Sleep 500ms
+
+# @narrate:after "The header sets output file, dimensions, and voice."
+Sleep 2s
+
+Escape
+Sleep 200ms
+
+# Highlight the @offscreen section
+Type "11G"
+Sleep 200ms
+Type "zz"
+Sleep 200ms
+Type "V"
+Type "17G"
+Sleep 500ms
+
+# @narrate:after "Here's the magic—the at-offscreen directive. Everything below it runs but is NOT recorded."
+Sleep 3s
+
+Escape
+Sleep 200ms
+
+# Show the joke1 terminal setup
+Type "19G"
+Sleep 200ms
+Type "zz"
+Sleep 200ms
+Type "V"
+Type "37G"
+Sleep 500ms
+
+# @narrate:after "This creates a terminal session called joke one and echoes a dad joke. The viewer never sees this happen."
+Sleep 3s
+
+Escape
+Sleep 200ms
+
+# Show the joke2 terminal setup  
+Type "39G"
+Sleep 200ms
+Type "zz"
+Sleep 200ms
+Type "V"
+Type "57G"
+Sleep 500ms
+
+# @narrate:after "Same for joke two—another named session, another joke, all invisible to the viewer."
+Sleep 3s
+
+Escape
+Sleep 200ms
+
+# Show the joke3 terminal setup
+Type "59G"
+Sleep 200ms
+Type "zz"
+Sleep 200ms
+Type "V"
+Type "77G"
+Sleep 500ms
+
+# @narrate:after "And joke three. Three terminal sessions, three dad jokes, zero video footage."
+Sleep 3s
+
+Escape
+Sleep 200ms
+
+# Highlight the @onscreen section
+Type "79G"
+Sleep 200ms
+Type "zz"
+Sleep 200ms
+Type "V"
+Type "84G"
+Sleep 500ms
+
+# @narrate:after "Then at-onscreen starts the recording. From here on, everything goes into the video."
+Sleep 3s
+
+Escape
+Sleep 200ms
+
+# Show the part where we show jokes
+Type "137G"
+Sleep 200ms
+Type "zz"
+Sleep 200ms
+Type "V"
+Type "150G"
+Sleep 500ms
+
+# @narrate:after "Later in the script, we switch back to each joke terminal. The jokes are already there—pre-loaded during offscreen setup."
+Sleep 3s
+
+Escape
+Type ":q!"
+Enter
+Sleep 500ms
+
+# --- Now show each terminal with jokes already present ---
+# @narrate:before "Now let's see the magic. Each terminal already has its joke."
+
+@mode terminal:joke1
+# @narrate:after "Joke one was set up offscreen. You never saw it happen, but here it is."
+Sleep 3s
+
+@mode terminal:joke2
+# @narrate:after "Joke two, same story. Prepared in advance, revealed on cue."
+Sleep 3s
+
+@mode terminal:joke3
+# @narrate:after "And joke three. All the setup happened before you started watching."
+Sleep 3s
+
+# --- Return to main terminal for conclusion ---
+@mode terminal
+
+# @narrate:before "Offscreen directives let you prepare everything before the camera rolls."
+Type "echo 'The @offscreen directive: setup without the clutter!'"
+Enter
+Sleep 2s
+
+# @narrate:after "Install dependencies, start servers, pre-load pages—all invisible to viewers. Welcome to cleaner demos."
+Sleep 3s

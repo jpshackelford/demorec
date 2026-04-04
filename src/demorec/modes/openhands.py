@@ -25,8 +25,7 @@ Example usage in .demorec:
 
 import os
 import re
-import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 # Default pattern to detect when OpenHands CLI is ready for input
@@ -58,14 +57,6 @@ class WaitForReadyConfig:
     timeout: float = DEFAULT_WAIT_TIMEOUT
     pattern: str = DEFAULT_READY_PATTERN
     poll_interval: float = POLL_INTERVAL
-
-
-def check_openhands_installed() -> bool:
-    """Check if openhands CLI is available on the system."""
-    if shutil.which("openhands"):
-        return True
-    local_bin = Path.home() / ".local" / "bin" / "openhands"
-    return local_bin.exists()
 
 
 def check_llm_configured() -> bool:

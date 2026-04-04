@@ -18,7 +18,6 @@ from demorec.modes.openhands import (
     OpenHandsState,
     OpenHandsCommandExpander,
     WaitForReadyConfig,
-    check_openhands_installed,
     check_llm_configured,
     preflight_check,
     generate_install_commands,
@@ -43,27 +42,6 @@ class TestOpenHandsState:
         """Test state with custom values."""
         state = OpenHandsState(running=True)
         assert state.running is True
-
-
-class TestCheckOpenHandsInstalled:
-    """Test OpenHands CLI availability checking."""
-
-    def test_returns_true_when_in_path(self):
-        """Should return True when openhands is in PATH."""
-        with patch("shutil.which", return_value="/usr/local/bin/openhands"):
-            assert check_openhands_installed() is True
-
-    def test_returns_true_when_in_local_bin(self):
-        """Should return True when openhands is in ~/.local/bin."""
-        with patch("shutil.which", return_value=None):
-            with patch.object(Path, "exists", return_value=True):
-                assert check_openhands_installed() is True
-
-    def test_returns_false_when_not_found(self):
-        """Should return False when openhands is not found."""
-        with patch("shutil.which", return_value=None):
-            with patch.object(Path, "exists", return_value=False):
-                assert check_openhands_installed() is False
 
 
 class TestCheckLlmConfigured:

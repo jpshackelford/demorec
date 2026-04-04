@@ -233,9 +233,6 @@ def _handle_mode_switch(args: list[str], ctx: _ParseContext):
         ctx.in_settings_mode = True  # Enter settings mode after @mode
 
 
-# Known terminal sub-modes for tool-specific primitives
-TERMINAL_SUBMODES = {"vim", "openhands"}
-
 # Known segment settings (parsed after @mode, before commands)
 SEGMENT_SETTINGS = {"rows", "size", "theme", "name"}
 

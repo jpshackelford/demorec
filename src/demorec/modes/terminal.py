@@ -178,8 +178,6 @@ class TerminalRecorder(CommandExecutorMixin):
         """Initialize command expanders based on submode."""
         terminal_rows = self.desired_rows or 24
         self._vim_expander = VimCommandExpander(terminal_rows=terminal_rows)
-        self._submode_expanders: dict = {}  # Extensible: submode -> expander
-        self._active_submode = submode
 
     def _init_dimensions(self, width: int, height: int, framerate: int):
         """Initialize dimension settings."""
@@ -392,8 +390,8 @@ class TerminalRecorder(CommandExecutorMixin):
 
     async def _execute_command(self, page, cmd: Command):
         """Execute a command in the real PTY."""
-        # Try submode-specific expansion first
-        expanded = self._try_expand_submode_command(cmd)
+        # Try vim command expansion first
+        expanded = self._try_expand_vim_command(cmd)
         if expanded is not None:
             await self._execute_expanded_sequence(page, expanded)
             return
@@ -403,18 +401,10 @@ class TerminalRecorder(CommandExecutorMixin):
         if handler:
             await handler(self, page, cmd)
 
-    def _try_expand_submode_command(self, cmd: Command) -> list[tuple[str, float]] | None:
-        """Try to expand command using active submode's expander."""
-        # Check for extensible submode expanders first
-        if self._active_submode and self._active_submode in self._submode_expanders:
-            expander = self._submode_expanders[self._active_submode]
-            if hasattr(expander, "is_command") and expander.is_command(cmd.name):
-                return expander.expand_command(cmd.name, cmd.args)
-
-        # Vim submode or backwards-compatible vim command detection
-        if self._active_submode == "vim" or self._vim_expander.is_vim_command(cmd.name):
-            if self._vim_expander.is_vim_command(cmd.name):
-                return self._vim_expander.expand_command(cmd.name, cmd.args)
+    def _try_expand_vim_command(self, cmd: Command) -> list[tuple[str, float]] | None:
+        """Try to expand command as a vim command."""
+        if self._vim_expander.is_vim_command(cmd.name):
+            return self._vim_expander.expand_command(cmd.name, cmd.args)
         return None
 
     # Map expanded keystroke names to Playwright key codes

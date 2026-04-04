@@ -352,7 +352,13 @@ def parse_script(path: Path) -> Plan:
 
 def _parse_line(line: str, line_num: int, ctx: _ParseContext):
     """Parse a single line from the script."""
-    if _handle_blank_or_delimiter(line, ctx):
+    # Handle blank lines and --- delimiter
+    if not line:
+        if ctx.in_settings_mode:
+            ctx.in_settings_mode = False
+        return
+    if line == "---":
+        ctx.in_settings_mode = False
         return
     if line.startswith("#"):
         _parse_comment(line, line_num, ctx)
@@ -362,101 +368,61 @@ def _parse_line(line: str, line_num: int, ctx: _ParseContext):
         _dispatch_command(tokens, line_num, ctx)
 
 
-def _handle_blank_or_delimiter(line: str, ctx: _ParseContext) -> bool:
-    """Handle blank lines and --- delimiter. Returns True if handled."""
-    if not line:
-        if ctx.in_settings_mode:
-            ctx.in_settings_mode = False
-        return True
-    if line == "---":
-        ctx.in_settings_mode = False
-        return True
-    return False
-
-
-def _dispatch_command(tokens: list[str], line_num: int, ctx: _ParseContext):
+def _dispatch_command(tokens: list[str], line_num: int, ctx: _ParseContext):  # length-ok
     """Dispatch a parsed command to the appropriate handler."""
     cmd_name, cmd_args = tokens[0], [parse_string(t) for t in tokens[1:]]
 
-    if _handle_global_directive(cmd_name, cmd_args, line_num, ctx):
+    # Global directives
+    if cmd_name == "Output" and cmd_args:
+        ctx.plan.output = Path(cmd_args[0])
         return
-    if _handle_settings_mode(cmd_name, cmd_args, line_num, ctx):
+    if cmd_name == "Set":
+        _handle_set_directive(cmd_args, line_num, ctx)
         return
+    if cmd_name == "@mode":
+        _handle_mode_switch(cmd_args, ctx)
+        return
+
+    # Settings mode: handle segment settings after @mode
+    if ctx.in_settings_mode:
+        name_lower = cmd_name.lower()
+        if name_lower in SEGMENT_SETTINGS and ctx.current_segment:
+            _apply_segment_setting(name_lower, cmd_args, line_num, ctx)
+            return
+        ctx.in_settings_mode = False  # Not a setting - exit settings mode
+
+    # Warn about misplaced settings
     _warn_if_misplaced_setting(cmd_name, line_num, ctx)
-    if _handle_legacy_terminal_directive(cmd_name, cmd_args, ctx):
+
+    # Legacy @terminal: directives
+    if cmd_name.startswith("@terminal:"):
+        directive = cmd_name.split(":", 1)[1].lower()
+        _handle_terminal_directive(directive, cmd_args, ctx)
         return
+
     _add_command(cmd_name, cmd_args, line_num, ctx)
-
-
-def _handle_global_directive(name: str, args: list[str], line_num: int, ctx: _ParseContext) -> bool:
-    """Handle global directives (Output, Set, @mode). Returns True if handled."""
-    if name == "Output" and args:
-        ctx.plan.output = Path(args[0])
-        return True
-    if name == "Set":
-        _handle_set_directive(args, line_num, ctx)
-        return True
-    if name == "@mode":
-        _handle_mode_switch(args, ctx)
-        return True
-    return False
-
-
-def _handle_settings_mode(name: str, args: list[str], line_num: int, ctx: _ParseContext) -> bool:
-    """Handle settings mode parsing. Returns True if handled as setting."""
-    if not ctx.in_settings_mode:
-        return False
-    if _handle_segment_setting(name.lower(), args, line_num, ctx):
-        return True
-    ctx.in_settings_mode = False  # Not a setting - exit settings mode
-    return False
-
-
-def _handle_legacy_terminal_directive(name: str, args: list[str], ctx: _ParseContext) -> bool:
-    """Handle legacy @terminal: directives. Returns True if handled."""
-    if not name.startswith("@terminal:"):
-        return False
-    directive = name.split(":", 1)[1].lower()
-    _handle_terminal_directive(directive, args, ctx)
-    return True
-
-
-def _handle_segment_setting(name: str, args: list[str], line_num: int, ctx: _ParseContext) -> bool:
-    """Handle a segment setting. Returns True if handled."""
-    if name not in SEGMENT_SETTINGS or not ctx.current_segment:
-        return False
-    _apply_segment_setting(name, args, line_num, ctx)
-    return True
 
 
 def _apply_segment_setting(name: str, args: list[str], line_num: int, ctx: _ParseContext):
     """Apply a segment setting to the current segment."""
-    if not args:
+    if not args or not ctx.current_segment:
         return
+    seg = ctx.current_segment
     if name == "rows":
-        _apply_rows_setting(args[0], ctx)
+        try:
+            rows = int(args[0])
+            if 10 <= rows <= 100:
+                seg.rows = rows
+        except ValueError:
+            pass
     elif name == "size":
-        _apply_size_setting(args[0].lower(), ctx)
+        size = args[0].lower()
+        if size in ("large", "medium", "small", "tiny"):
+            seg.size = size
     elif name == "theme":
-        ctx.current_segment.commands.append(Command("SetTheme", args, line_num))
+        seg.commands.append(Command("SetTheme", args, line_num))
     elif name == "name":
-        ctx.current_segment.session_name = args[0]
-
-
-def _apply_rows_setting(rows_str: str, ctx: _ParseContext):
-    """Apply rows setting to current segment."""
-    try:
-        rows = int(rows_str)
-        if 10 <= rows <= 100 and ctx.current_segment:
-            ctx.current_segment.rows = rows
-    except ValueError:
-        pass
-
-
-def _apply_size_setting(size: str, ctx: _ParseContext):
-    """Apply size preset to current segment."""
-    if size in ("large", "medium", "small", "tiny") and ctx.current_segment:
-        ctx.current_segment.size = size
+        seg.session_name = args[0]
 
 
 def _warn_if_misplaced_setting(cmd_name: str, line_num: int, ctx: _ParseContext):

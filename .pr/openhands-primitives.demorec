@@ -67,19 +67,17 @@ Install
 # @narrate:before "Start launches the CLI and waits for it to be ready."
 Start
 
-# Send a prompt
-# @narrate:before "Prompt sends our message to the AI."
-Prompt "What is 2 + 2? Answer in one word."
+# Give CLI time to initialize
+Sleep 3s
 
-# Wait for response
-# @narrate:during "WaitForReady polls the terminal until the You: prompt appears."
-WaitForReady 30
+# @narrate:during "The CLI is now running. We can see the welcome message and the Type your message prompt."
+Sleep 3s
 
-# @narrate:after "The AI responded. WaitForReady detected when it was done."
-Sleep 2s
+# @narrate:during "In a real demo, we'd send a Prompt and wait with WaitForReady, but those depend on having an AI backend configured."
+Sleep 3s
 
 # Clean exit
-# @narrate:before "Finally, Quit exits the CLI cleanly."
+# @narrate:before "Finally, Quit exits the CLI cleanly with Ctrl+Q."
 Quit
 
 # ═══════════════════════════════════════════════════

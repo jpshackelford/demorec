@@ -118,6 +118,13 @@ def _tmux_session_exists(tmux_session: str) -> bool:
 
 def _create_tmux_session(tmux_session: str) -> None:  # length-ok: subprocess calls
     """Create a new tmux session with clean shell environment."""
+    env = make_clean_env()
+
+    env_args = ["PS1=$ "]
+    for key in ["LLM_API_KEY", "LLM_MODEL", "LLM_BASE_URL"]:
+        if key in env:
+            env_args.append(f"{key}={env[key]}")
+
     cmd = [
         "tmux",
         "new-session",
@@ -125,12 +132,12 @@ def _create_tmux_session(tmux_session: str) -> None:  # length-ok: subprocess ca
         "-s",
         tmux_session,
         "/usr/bin/env",
-        "PS1=$ ",
+        *env_args,
         "/bin/bash",
         "--norc",
         "--noprofile",
     ]
-    subprocess.run(cmd, env=make_clean_env(), capture_output=True)
+    subprocess.run(cmd, env=env, capture_output=True)
     subprocess.run(["tmux", "set-option", "-t", tmux_session, "status", "off"], capture_output=True)
 
 

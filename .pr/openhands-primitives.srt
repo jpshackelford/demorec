@@ -1,0 +1,72 @@
+1
+00:00:00,000 --> 00:00:05,544
+OpenHands CLI Primitives. High-level
+commands for demo recording.
+
+2
+00:00:06,355 --> 00:00:16,819
+Recording OpenHands CLI demos used to
+require complex keystroke sequences.
+Manual typing, waiting for startup, timing
+AI responses.
+
+3
+00:00:17,633 --> 00:00:28,241
+Now demorec supports high-level
+primitives. Install, Start, Prompt,
+WaitForReady, and Quit. Each handles the
+complexity internally.
+
+4
+00:00:29,058 --> 00:00:36,546
+Here's an example script. One line per
+action. No keystroke details to worry
+about.
+
+5
+00:00:37,352 --> 00:00:39,584
+Let's see it in action.
+
+6
+00:00:41,082 --> 00:00:44,250
+First, let's look at this demo script.
+
+7
+00:00:51,870 --> 00:00:55,758
+Notice the openhands submode and the
+high-level commands.
+
+8
+00:00:56,640 --> 00:01:00,768
+The Install command runs uv tool install
+openhands.
+
+9
+00:01:29,026 --> 00:01:32,794
+Start launches the CLI and waits for it to
+be ready.
+
+10
+00:01:53,650 --> 00:01:56,530
+Prompt sends our message to the AI.
+
+11
+00:02:07,400 --> 00:02:11,792
+WaitForReady polls the terminal until the
+AI finishes responding.
+
+12
+00:04:09,847 --> 00:04:14,887
+The AI responded. WaitForReady detected
+when it was done.
+
+13
+00:04:14,888 --> 00:04:18,512
+Finally, Quit exits the CLI cleanly.
+
+14
+00:04:19,800 --> 00:04:28,296
+OpenHands CLI Primitives. Available now in
+demorec. Check out the repo and try it on
+your next demo.
+

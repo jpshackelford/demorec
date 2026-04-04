@@ -203,16 +203,20 @@ class OpenHandsCommandExpander:
 
     This class is used by the terminal recorder to expand Install, Start,
     Prompt, etc. commands into the actual keystrokes needed.
+
+    State validation ensures commands are used in valid sequence:
+    - Start must be called before Prompt, MultilinePrompt, Command, Palette, or Quit
+    - Start cannot be called twice without Quit in between
+    - Quit cannot be called when CLI is not running
     """
 
     COMMANDS = ("Install", "Start", "Prompt", "MultilinePrompt", "Command", "Palette", "Quit")
+    # Commands that require the CLI to be running
+    _REQUIRES_RUNNING = ("Prompt", "MultilinePrompt", "Command", "Palette", "Quit")
 
     def __init__(self):
         self.state = OpenHandsState()
-
-    def expand_command(self, cmd_name: str, cmd_args: list[str]) -> list[tuple[str, float]]:
-        """Expand a high-level command into keystrokes."""
-        handlers = {
+        self._handlers = {
             "Install": self._expand_install,
             "Start": self._expand_start,
             "Prompt": self._expand_prompt,
@@ -221,17 +225,38 @@ class OpenHandsCommandExpander:
             "Palette": self._expand_palette,
             "Quit": self._expand_quit,
         }
-        handler = handlers.get(cmd_name)
+
+    def expand_command(self, cmd_name: str, cmd_args: list[str]) -> list[tuple[str, float]]:
+        """Expand a high-level command into keystrokes.
+
+        Raises:
+            ValueError: If command is used in invalid state (e.g., Prompt before Start)
+        """
+        handler = self._handlers.get(cmd_name)
         return handler(cmd_args) if handler else []
+
+    def _require_running(self, cmd_name: str) -> None:
+        """Raise ValueError if CLI is not running."""
+        if not self.state.running:
+            raise ValueError(
+                f"Cannot use '{cmd_name}' before 'Start'. "
+                f"The OpenHands CLI must be started first."
+            )
 
     def _expand_install(self, args: list[str]) -> list[tuple[str, float]]:
         version = args[0] if args else None
         return generate_install_commands(version)
 
     def _expand_start(self, args: list[str]) -> list[tuple[str, float]]:
+        if self.state.running:
+            raise ValueError(
+                "Cannot use 'Start' when CLI is already running. "
+                "Use 'Quit' first to stop the current session."
+            )
         return generate_start_commands(self.state)
 
     def _expand_prompt(self, args: list[str]) -> list[tuple[str, float]]:
+        self._require_running("Prompt")
         if not args:
             return []
         text = args[0]
@@ -239,6 +264,7 @@ class OpenHandsCommandExpander:
         return generate_prompt_commands(text, wait)
 
     def _expand_multiline(self, args: list[str]) -> list[tuple[str, float]]:
+        self._require_running("MultilinePrompt")
         if not args:
             return []
         text = args[0]
@@ -246,14 +272,17 @@ class OpenHandsCommandExpander:
         return generate_multiline_commands(text, wait)
 
     def _expand_command(self, args: list[str]) -> list[tuple[str, float]]:
+        self._require_running("Command")
         if not args:
             return []
         return generate_command_commands(args[0])
 
     def _expand_palette(self, args: list[str]) -> list[tuple[str, float]]:
+        self._require_running("Palette")
         return generate_palette_commands()
 
     def _expand_quit(self, args: list[str]) -> list[tuple[str, float]]:
+        self._require_running("Quit")
         return generate_quit_commands(self.state)
 
     def is_openhands_command(self, cmd_name: str) -> bool:

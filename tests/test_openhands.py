@@ -349,8 +349,9 @@ class TestOpenHandsCommandExpander:
         assert any("openhands" in cmd[0] for cmd in commands)
 
     def test_expand_prompt_command(self):
-        """Should expand Prompt command to keystrokes."""
+        """Should expand Prompt command to keystrokes after Start."""
         expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])  # Must start first
         commands = expander.expand_command("Prompt", ["Hello world"])
         assert len(commands) > 0
         assert commands[0][0] == "Hello world"
@@ -359,18 +360,21 @@ class TestOpenHandsCommandExpander:
     def test_expand_prompt_empty_args(self):
         """Should return empty list for Prompt with no args."""
         expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])  # Must start first
         commands = expander.expand_command("Prompt", [])
         assert commands == []
 
     def test_expand_prompt_with_wait(self):
         """Should expand Prompt with custom wait time."""
         expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])  # Must start first
         commands = expander.expand_command("Prompt", ["Complex task", "30"])
         assert commands[1][1] == 30.0
 
     def test_expand_multiline_command(self):
-        """Should expand MultilinePrompt command to keystrokes."""
+        """Should expand MultilinePrompt command to keystrokes after Start."""
         expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])  # Must start first
         commands = expander.expand_command("MultilinePrompt", ["Line 1\nLine 2"])
         assert len(commands) > 0
         assert commands[0] == ("CTRL+L", 0.3)
@@ -379,12 +383,14 @@ class TestOpenHandsCommandExpander:
     def test_expand_multiline_empty_args(self):
         """Should return empty list for MultilinePrompt with no args."""
         expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])  # Must start first
         commands = expander.expand_command("MultilinePrompt", [])
         assert commands == []
 
     def test_expand_command_command(self):
-        """Should expand Command command to keystrokes."""
+        """Should expand Command command to keystrokes after Start."""
         expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])  # Must start first
         commands = expander.expand_command("Command", ["/history"])
         assert commands[0][0] == "/history"
         assert commands[1][0] == "ENTER"
@@ -392,18 +398,21 @@ class TestOpenHandsCommandExpander:
     def test_expand_command_empty_args(self):
         """Should return empty list for Command with no args."""
         expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])  # Must start first
         commands = expander.expand_command("Command", [])
         assert commands == []
 
     def test_expand_palette_command(self):
-        """Should expand Palette command to keystrokes."""
+        """Should expand Palette command to keystrokes after Start."""
         expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])  # Must start first
         commands = expander.expand_command("Palette", [])
         assert commands == [("CTRL+P", 0.5)]
 
     def test_expand_quit_command(self):
-        """Should expand Quit command to keystrokes."""
+        """Should expand Quit command to keystrokes after Start."""
         expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])  # Must start first
         commands = expander.expand_command("Quit", [])
         assert commands == [("CTRL+Q", 1.0)]
 
@@ -421,6 +430,95 @@ class TestOpenHandsCommandExpander:
 
         expander.expand_command("Quit", [])
         assert expander.state.running is False
+
+
+class TestOpenHandsStateValidation:
+    """Test state validation in OpenHandsCommandExpander."""
+
+    def test_prompt_before_start_raises(self):
+        """Prompt before Start should raise ValueError."""
+        expander = OpenHandsCommandExpander()
+        with pytest.raises(ValueError, match="Cannot use 'Prompt' before 'Start'"):
+            expander.expand_command("Prompt", ["Hello"])
+
+    def test_multiline_before_start_raises(self):
+        """MultilinePrompt before Start should raise ValueError."""
+        expander = OpenHandsCommandExpander()
+        with pytest.raises(ValueError, match="Cannot use 'MultilinePrompt' before 'Start'"):
+            expander.expand_command("MultilinePrompt", ["Line 1\nLine 2"])
+
+    def test_command_before_start_raises(self):
+        """Command before Start should raise ValueError."""
+        expander = OpenHandsCommandExpander()
+        with pytest.raises(ValueError, match="Cannot use 'Command' before 'Start'"):
+            expander.expand_command("Command", ["/history"])
+
+    def test_palette_before_start_raises(self):
+        """Palette before Start should raise ValueError."""
+        expander = OpenHandsCommandExpander()
+        with pytest.raises(ValueError, match="Cannot use 'Palette' before 'Start'"):
+            expander.expand_command("Palette", [])
+
+    def test_quit_before_start_raises(self):
+        """Quit before Start should raise ValueError."""
+        expander = OpenHandsCommandExpander()
+        with pytest.raises(ValueError, match="Cannot use 'Quit' before 'Start'"):
+            expander.expand_command("Quit", [])
+
+    def test_double_start_raises(self):
+        """Start when already running should raise ValueError."""
+        expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])
+        with pytest.raises(ValueError, match="Cannot use 'Start' when CLI is already running"):
+            expander.expand_command("Start", [])
+
+    def test_install_allowed_anytime(self):
+        """Install should work regardless of state."""
+        expander = OpenHandsCommandExpander()
+        # Before Start
+        commands = expander.expand_command("Install", [])
+        assert len(commands) > 0
+
+        # After Start
+        expander.expand_command("Start", [])
+        commands = expander.expand_command("Install", ["1.0.0"])
+        assert len(commands) > 0
+
+    def test_full_valid_sequence(self):
+        """Full valid sequence: Start -> Prompt -> Command -> Quit."""
+        expander = OpenHandsCommandExpander()
+
+        # Start
+        commands = expander.expand_command("Start", [])
+        assert len(commands) > 0
+        assert expander.state.running is True
+
+        # Prompt
+        commands = expander.expand_command("Prompt", ["Hello"])
+        assert commands[0][0] == "Hello"
+
+        # Command
+        commands = expander.expand_command("Command", ["/help"])
+        assert commands[0][0] == "/help"
+
+        # Quit
+        commands = expander.expand_command("Quit", [])
+        assert commands == [("CTRL+Q", 1.0)]
+        assert expander.state.running is False
+
+    def test_restart_after_quit(self):
+        """Should be able to Start again after Quit."""
+        expander = OpenHandsCommandExpander()
+
+        # First session
+        expander.expand_command("Start", [])
+        expander.expand_command("Quit", [])
+        assert expander.state.running is False
+
+        # Second session
+        commands = expander.expand_command("Start", [])
+        assert len(commands) > 0
+        assert expander.state.running is True
 
 
 if __name__ == "__main__":

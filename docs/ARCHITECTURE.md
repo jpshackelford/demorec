@@ -160,14 +160,17 @@ Each `Segment` represents a continuous block in a single mode:
 @dataclass
 class Segment:
     mode: Literal["terminal", "browser", "presentation"]
-    session_name: str = "default"   # For terminal:name syntax
+    submode: str | None = None       # e.g., "vim" for terminal:vim
+    session_name: str = "default"    # Session name via 'name' setting
     commands: list[Command]
     narrations: dict[int, Narration]  # cmd_index → narration
     size: str | None                  # Terminal size preset
     rows: int | None                  # Explicit row count
 ```
 
-The parser uses a `_Tokenizer` class to handle quoted strings with escape sequences, and `_ParseContext` to track state during parsing.
+Session names are specified via the `name` setting after `@mode`, not via colon syntax (which is reserved for sub-modes like `terminal:vim`).
+
+The parser uses a `_Tokenizer` class to handle quoted strings with escape sequences, and `_ParseContext` to track state during parsing. Settings mode is entered after `@mode` and ends on a blank line or `---` delimiter.
 
 ### Runner (`runner.py`)
 
@@ -278,7 +281,7 @@ One of the most complex challenges is ensuring the ANSI terminal, xterm.js, and 
 ### The Row Synchronization Problem
 
 ```
-User says: @terminal:rows 30
+User specifies: rows 30    (or legacy: @terminal:rows 30)
 
 What needs to happen:
   ┌─────────────────────────────────────────┐
@@ -429,18 +432,24 @@ class TerminalSessionManager:
 ### Session Flow Example
 
 ```tape
-@mode terminal:server       # Creates demorec-server tmux session
+@mode terminal
+name "server"               # Creates demorec-server tmux session
+---
 Type "python -m http.server"
 Enter
 
 @mode browser               # Server keeps running!
 Navigate "http://localhost:8000"
 
-@mode terminal:client       # Creates demorec-client (independent)
+@mode terminal
+name "client"               # Creates demorec-client (independent)
+---
 Type "curl localhost:8000"
 Enter
 
-@mode terminal:server       # Reconnects to server session
+@mode terminal
+name "server"               # Reconnects to server session
+---
 # Shows server logs from the requests
 ```
 

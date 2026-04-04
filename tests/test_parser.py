@@ -396,6 +396,22 @@ class TestHandleModeSwitch:
         _handle_mode_switch(["terminal:future-tool"], ctx)
         assert ctx.current_segment.submode == "future-tool"
 
+    def test_old_session_syntax_now_interpreted_as_submode(self):
+        """BREAKING CHANGE: terminal:name is now submode, not session name.
+
+        Old behavior: @mode terminal:server -> session_name="server"
+        New behavior: @mode terminal:server -> submode="server", session_name="default"
+
+        To specify session names, use the 'name' setting:
+            @mode terminal
+            name "server"
+        """
+        ctx = _ParseContext(plan=Plan())
+        _handle_mode_switch(["terminal:server"], ctx)
+        # Breaking change: "server" is now interpreted as submode, not session_name
+        assert ctx.current_segment.submode == "server"
+        assert ctx.current_segment.session_name == "default"  # Not "server"
+
     def test_terminal_empty_submode(self):
         """Should handle empty submode (just colon)."""
         ctx = _ParseContext(plan=Plan())

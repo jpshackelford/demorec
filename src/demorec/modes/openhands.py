@@ -229,12 +229,23 @@ class OpenHandsCommandExpander:
     """
 
     COMMANDS = (
-        "Install", "Start", "Prompt", "MultilinePrompt",
-        "Command", "Palette", "WaitForReady", "Quit",
+        "Install",
+        "Start",
+        "Prompt",
+        "MultilinePrompt",
+        "Command",
+        "Palette",
+        "WaitForReady",
+        "Quit",
     )
     # Commands that require the CLI to be running
     _REQUIRES_RUNNING = (
-        "Prompt", "MultilinePrompt", "Command", "Palette", "WaitForReady", "Quit",
+        "Prompt",
+        "MultilinePrompt",
+        "Command",
+        "Palette",
+        "WaitForReady",
+        "Quit",
     )
 
     def __init__(self):
@@ -269,8 +280,7 @@ class OpenHandsCommandExpander:
         """Raise ValueError if CLI is not running."""
         if not self.state.running:
             raise ValueError(
-                f"Cannot use '{cmd_name}' before 'Start'. "
-                f"The OpenHands CLI must be started first."
+                f"Cannot use '{cmd_name}' before 'Start'. The OpenHands CLI must be started first."
             )
 
     def _expand_install(self, args: list[str]) -> list[tuple[str, float]]:

@@ -345,6 +345,8 @@ demorec supports switching between terminal and browser modes, with **persistent
 name "server"
 ---
 # Commands for the "server" session...
+# Note: The old @mode terminal:server syntax is no longer supported.
+# Use the 'name' setting instead (as shown above).
 ```
 
 #### Segment Settings Syntax
@@ -363,6 +365,8 @@ Close
 ```
 
 Supported settings: `rows`, `size`, `theme`, `name`
+
+Sub-modes (e.g., `terminal:vim`) and session names can be combined, as shown in the example above.
 
 #### Terminal Sub-modes
 

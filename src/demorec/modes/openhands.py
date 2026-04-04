@@ -1,10 +1,11 @@
 """High-level OpenHands CLI primitives for demo recording.
 
-Provides Install, Start, Prompt, MultilinePrompt, Command, Palette, and Quit
-commands that handle all the OpenHands CLI complexity internally, including:
+Provides Install, Start, Prompt, MultilinePrompt, Command, Palette, WaitForReady,
+and Quit commands that handle all the OpenHands CLI complexity internally, including:
 - Installing the CLI via uv
 - Launching and waiting for the CLI to be ready
 - Sending single-line and multi-line prompts
+- Waiting for AI response completion before continuing
 - Executing slash commands
 - Clean exit
 
@@ -16,17 +17,27 @@ Example usage in .demorec:
     Install
     Start
     Prompt "Tell me a dad joke"
-    MultilinePrompt "Create a Python function that:
-    - Takes a list of numbers
-    - Returns only the even ones"
-    Command "/history"
+    WaitForReady              # Wait until AI finishes responding
+    Prompt "Now a programming joke"
+    WaitForReady 120          # Wait up to 120s for long responses
     Quit
 """
 
 import os
+import re
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+# Default pattern to detect when OpenHands CLI is ready for input
+# Matches the "You:" prompt that appears when the CLI is waiting for user input
+DEFAULT_READY_PATTERN = r"^You:\s*$"
+
+# Default timeout for waiting (seconds)
+DEFAULT_WAIT_TIMEOUT = 60.0
+
+# Polling interval when waiting for ready (seconds)
+POLL_INTERVAL = 0.5
 
 
 @dataclass
@@ -34,6 +45,19 @@ class OpenHandsState:
     """Tracks OpenHands CLI session state."""
 
     running: bool = False
+
+
+@dataclass
+class WaitForReadyConfig:
+    """Configuration for a WaitForReady command.
+
+    This is returned by the expander and processed specially by the terminal
+    recorder, which has access to terminal output for polling.
+    """
+
+    timeout: float = DEFAULT_WAIT_TIMEOUT
+    pattern: str = DEFAULT_READY_PATTERN
+    poll_interval: float = POLL_INTERVAL
 
 
 def check_openhands_installed() -> bool:
@@ -205,14 +229,18 @@ class OpenHandsCommandExpander:
     Prompt, etc. commands into the actual keystrokes needed.
 
     State validation ensures commands are used in valid sequence:
-    - Start must be called before Prompt, MultilinePrompt, Command, Palette, or Quit
+    - Start must be called before Prompt, MultilinePrompt, Command, Palette, WaitForReady, or Quit
     - Start cannot be called twice without Quit in between
     - Quit cannot be called when CLI is not running
+
+    Special commands:
+    - WaitForReady returns a WaitForReadyConfig instead of keystrokes, which the
+      terminal recorder handles specially by polling terminal output.
     """
 
-    COMMANDS = ("Install", "Start", "Prompt", "MultilinePrompt", "Command", "Palette", "Quit")
+    COMMANDS = ("Install", "Start", "Prompt", "MultilinePrompt", "Command", "Palette", "WaitForReady", "Quit")
     # Commands that require the CLI to be running
-    _REQUIRES_RUNNING = ("Prompt", "MultilinePrompt", "Command", "Palette", "Quit")
+    _REQUIRES_RUNNING = ("Prompt", "MultilinePrompt", "Command", "Palette", "WaitForReady", "Quit")
 
     def __init__(self):
         self.state = OpenHandsState()
@@ -223,11 +251,16 @@ class OpenHandsCommandExpander:
             "MultilinePrompt": self._expand_multiline,
             "Command": self._expand_command,
             "Palette": self._expand_palette,
+            "WaitForReady": self._expand_wait_for_ready,
             "Quit": self._expand_quit,
         }
 
-    def expand_command(self, cmd_name: str, cmd_args: list[str]) -> list[tuple[str, float]]:
-        """Expand a high-level command into keystrokes.
+    def expand_command(self, cmd_name: str, cmd_args: list[str]) -> list[tuple[str, float]] | WaitForReadyConfig:
+        """Expand a high-level command into keystrokes or special config.
+
+        Returns:
+            list[tuple[str, float]]: Keystroke sequence for most commands
+            WaitForReadyConfig: For WaitForReady command (handled specially by recorder)
 
         Raises:
             ValueError: If command is used in invalid state (e.g., Prompt before Start)
@@ -280,6 +313,22 @@ class OpenHandsCommandExpander:
     def _expand_palette(self, args: list[str]) -> list[tuple[str, float]]:
         self._require_running("Palette")
         return generate_palette_commands()
+
+    def _expand_wait_for_ready(self, args: list[str]) -> WaitForReadyConfig:
+        """Expand WaitForReady into a config for the terminal recorder.
+
+        Args:
+            args: Optional [timeout] or [timeout, pattern]
+                - timeout: Max seconds to wait (default 60)
+                - pattern: Regex pattern to match ready state (default "^You:\\s*$")
+
+        Returns:
+            WaitForReadyConfig for the terminal recorder to process
+        """
+        self._require_running("WaitForReady")
+        timeout = float(args[0]) if args else DEFAULT_WAIT_TIMEOUT
+        pattern = args[1] if len(args) > 1 else DEFAULT_READY_PATTERN
+        return WaitForReadyConfig(timeout=timeout, pattern=pattern)
 
     def _expand_quit(self, args: list[str]) -> list[tuple[str, float]]:
         self._require_running("Quit")

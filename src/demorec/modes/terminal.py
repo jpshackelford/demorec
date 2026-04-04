@@ -14,9 +14,9 @@ from pathlib import Path
 
 from ..parser import Command, Segment
 from ..ttyd import check_ttyd, ensure_tmux_session, find_free_port, start_ttyd, stop_ttyd
-from ..xterm import TerminalConfig, fit_to_rows, setup_terminal
+from ..xterm import GET_BUFFER_STATE_JS, TerminalConfig, fit_to_rows, setup_terminal
 from . import CommandExecutorMixin
-from .openhands import OpenHandsCommandExpander
+from .openhands import OpenHandsCommandExpander, WaitForReadyConfig
 from .terminal_commands import TERMINAL_COMMANDS, THEMES
 from .vim import VimCommandExpander
 
@@ -396,7 +396,11 @@ class TerminalRecorder(CommandExecutorMixin):
         # Try submode-specific expansion first
         expanded = self._try_expand_submode_command(cmd)
         if expanded is not None:
-            await self._execute_expanded_sequence(page, expanded)
+            # Handle special WaitForReadyConfig
+            if isinstance(expanded, WaitForReadyConfig):
+                await self._wait_for_ready(page, expanded)
+            else:
+                await self._execute_expanded_sequence(page, expanded)
             return
 
         # Fall through to base terminal commands
@@ -404,7 +408,7 @@ class TerminalRecorder(CommandExecutorMixin):
         if handler:
             await handler(self, page, cmd)
 
-    def _try_expand_submode_command(self, cmd: Command) -> list[tuple[str, float]] | None:
+    def _try_expand_submode_command(self, cmd: Command) -> list[tuple[str, float]] | WaitForReadyConfig | None:
         """Try to expand command using active submode's expander."""
         if self._active_submode == "openhands":
             if self._openhands_expander.is_openhands_command(cmd.name):
@@ -416,6 +420,32 @@ class TerminalRecorder(CommandExecutorMixin):
             # No submode - check vim for backwards compatibility
             return self._vim_expander.expand_command(cmd.name, cmd.args)
         return None
+
+    async def _wait_for_ready(self, page, config: WaitForReadyConfig):
+        """Wait until terminal shows the ready pattern.
+
+        Polls terminal content until the pattern is found or timeout is reached.
+        Used by OpenHands WaitForReady command to wait for AI response completion.
+        """
+        import re
+
+        pattern = re.compile(config.pattern)
+        start_time = time.time()
+
+        while time.time() - start_time < config.timeout:
+            # Get current terminal buffer content
+            buffer_state = await page.evaluate(GET_BUFFER_STATE_JS)
+            if buffer_state and buffer_state.get("visibleLines"):
+                # Check if any visible line matches the ready pattern
+                for line in buffer_state["visibleLines"]:
+                    if pattern.search(line):
+                        return  # Ready!
+
+            await asyncio.sleep(config.poll_interval)
+
+        # Timeout - log warning but continue (don't fail the recording)
+        elapsed = time.time() - start_time
+        print(f"WaitForReady: Timeout after {elapsed:.1f}s waiting for pattern '{config.pattern}'")
 
     # Map expanded keystroke names to Playwright key codes
     EXPANDED_SPECIAL_KEYS = {

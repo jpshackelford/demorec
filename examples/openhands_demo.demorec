@@ -15,11 +15,13 @@ Install
 # Start the CLI
 Start
 
-# Send a simple prompt
+# Send a simple prompt and wait for AI to finish responding
 Prompt "Tell me a dad joke"
+WaitForReady
 
-# Send another prompt
+# Send another prompt (WaitForReady uses 60s default timeout)
 Prompt "Now tell me a programming joke"
+WaitForReady 120  # Wait up to 120s for longer responses
 
 # Exit cleanly
 Quit

@@ -13,8 +13,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from demorec.modes.openhands import (
+    DEFAULT_READY_PATTERN,
+    DEFAULT_WAIT_TIMEOUT,
     OpenHandsState,
     OpenHandsCommandExpander,
+    WaitForReadyConfig,
     check_openhands_installed,
     check_llm_configured,
     preflight_check,
@@ -519,6 +522,81 @@ class TestOpenHandsStateValidation:
         commands = expander.expand_command("Start", [])
         assert len(commands) > 0
         assert expander.state.running is True
+
+    def test_wait_for_ready_before_start_raises(self):
+        """WaitForReady before Start should raise ValueError."""
+        expander = OpenHandsCommandExpander()
+        with pytest.raises(ValueError, match="Cannot use 'WaitForReady' before 'Start'"):
+            expander.expand_command("WaitForReady", [])
+
+
+class TestWaitForReadyConfig:
+    """Test WaitForReadyConfig dataclass."""
+
+    def test_default_values(self):
+        """Should have sensible defaults."""
+        config = WaitForReadyConfig()
+        assert config.timeout == DEFAULT_WAIT_TIMEOUT
+        assert config.pattern == DEFAULT_READY_PATTERN
+        assert config.poll_interval == 0.5
+
+    def test_custom_values(self):
+        """Should accept custom values."""
+        config = WaitForReadyConfig(timeout=120.0, pattern=r">>>", poll_interval=1.0)
+        assert config.timeout == 120.0
+        assert config.pattern == r">>>"
+        assert config.poll_interval == 1.0
+
+
+class TestWaitForReadyExpansion:
+    """Test WaitForReady command expansion."""
+
+    def test_returns_config_not_keystrokes(self):
+        """WaitForReady should return WaitForReadyConfig, not keystrokes."""
+        expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])
+        result = expander.expand_command("WaitForReady", [])
+        assert isinstance(result, WaitForReadyConfig)
+
+    def test_default_timeout(self):
+        """Should use default timeout when no args provided."""
+        expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])
+        config = expander.expand_command("WaitForReady", [])
+        assert config.timeout == DEFAULT_WAIT_TIMEOUT
+
+    def test_custom_timeout(self):
+        """Should accept custom timeout as first arg."""
+        expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])
+        config = expander.expand_command("WaitForReady", ["120"])
+        assert config.timeout == 120.0
+
+    def test_custom_pattern(self):
+        """Should accept custom pattern as second arg."""
+        expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])
+        config = expander.expand_command("WaitForReady", ["60", r">>>"])
+        assert config.timeout == 60.0
+        assert config.pattern == r">>>"
+
+    def test_default_pattern(self):
+        """Should use default pattern matching 'You:' prompt."""
+        expander = OpenHandsCommandExpander()
+        expander.expand_command("Start", [])
+        config = expander.expand_command("WaitForReady", [])
+        assert config.pattern == DEFAULT_READY_PATTERN
+        # Verify pattern matches expected format
+        import re
+        pattern = re.compile(config.pattern)
+        assert pattern.match("You:")
+        assert pattern.match("You:   ")
+        assert not pattern.match("You: some text")
+
+    def test_is_openhands_command(self):
+        """WaitForReady should be recognized as an OpenHands command."""
+        expander = OpenHandsCommandExpander()
+        assert expander.is_openhands_command("WaitForReady") is True
 
 
 if __name__ == "__main__":

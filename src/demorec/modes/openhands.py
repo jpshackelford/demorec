@@ -34,7 +34,6 @@ class OpenHandsState:
     """Tracks OpenHands CLI session state."""
 
     running: bool = False
-    in_multiline: bool = False
 
 
 def check_openhands_installed() -> bool:
@@ -109,7 +108,6 @@ def generate_start_commands(state: OpenHandsState) -> list[tuple[str, float]]:
         List of (keys_to_type, delay_after) tuples
     """
     state.running = True
-    state.in_multiline = False
 
     return [
         ("openhands", 0),
@@ -151,10 +149,8 @@ def generate_multiline_commands(
     """
     commands = []
 
-    # Toggle multiline mode if not already in it
-    if not state.in_multiline:
-        commands.append(("CTRL+L", 0.3))
-        state.in_multiline = True
+    # Enter multiline mode with CTRL+L
+    commands.append(("CTRL+L", 0.3))
 
     # Type each line with Enter for newlines
     lines = text.strip().split("\n")
@@ -163,7 +159,7 @@ def generate_multiline_commands(
         if i < len(lines) - 1:  # Don't add Enter after last line
             commands.append(("ENTER", 0.1))
 
-    # Submit with Ctrl+J
+    # Submit with Ctrl+J (exits multiline mode automatically)
     commands.append(("CTRL+J", wait))
 
     return commands
@@ -203,7 +199,6 @@ def generate_quit_commands(state: OpenHandsState) -> list[tuple[str, float]]:
         List of (keys_to_type, delay_after) tuples
     """
     state.running = False
-    state.in_multiline = False
 
     return [("CTRL+Q", 1.0)]
 

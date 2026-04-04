@@ -278,8 +278,6 @@ Enter
 | `small` | 44 | Default xterm.js density |
 | `tiny` | 50 | Maximum content, smaller text |
 
-> **Note:** Legacy `@terminal:rows 30` and `@terminal:size medium` directives are still supported for backwards compatibility.
-
 ### High-Level Vim Primitives
 
 For AI agents creating code review demos, these commands handle vim complexity internally:

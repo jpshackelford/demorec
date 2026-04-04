@@ -24,7 +24,6 @@ Example usage in .demorec:
 """
 
 import os
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -229,9 +228,14 @@ class OpenHandsCommandExpander:
       terminal recorder handles specially by polling terminal output.
     """
 
-    COMMANDS = ("Install", "Start", "Prompt", "MultilinePrompt", "Command", "Palette", "WaitForReady", "Quit")
+    COMMANDS = (
+        "Install", "Start", "Prompt", "MultilinePrompt",
+        "Command", "Palette", "WaitForReady", "Quit",
+    )
     # Commands that require the CLI to be running
-    _REQUIRES_RUNNING = ("Prompt", "MultilinePrompt", "Command", "Palette", "WaitForReady", "Quit")
+    _REQUIRES_RUNNING = (
+        "Prompt", "MultilinePrompt", "Command", "Palette", "WaitForReady", "Quit",
+    )
 
     def __init__(self):
         self.state = OpenHandsState()
@@ -246,7 +250,9 @@ class OpenHandsCommandExpander:
             "Quit": self._expand_quit,
         }
 
-    def expand_command(self, cmd_name: str, cmd_args: list[str]) -> list[tuple[str, float]] | WaitForReadyConfig:
+    def expand_command(
+        self, cmd_name: str, cmd_args: list[str]
+    ) -> list[tuple[str, float]] | WaitForReadyConfig:
         """Expand a high-level command into keystrokes or special config.
 
         Returns:

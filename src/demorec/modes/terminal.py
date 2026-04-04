@@ -408,7 +408,9 @@ class TerminalRecorder(CommandExecutorMixin):
         if handler:
             await handler(self, page, cmd)
 
-    def _try_expand_submode_command(self, cmd: Command) -> list[tuple[str, float]] | WaitForReadyConfig | None:
+    def _try_expand_submode_command(
+        self, cmd: Command
+    ) -> list[tuple[str, float]] | WaitForReadyConfig | None:
         """Try to expand command using active submode's expander."""
         if self._active_submode == "openhands":
             if self._openhands_expander.is_openhands_command(cmd.name):

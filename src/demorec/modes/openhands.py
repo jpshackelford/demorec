@@ -62,15 +62,16 @@ def preflight_check() -> list[str]:
     errors = []
 
     # Check if LLM is configured via settings file OR environment variables
-    has_env_config = all(os.environ.get(v) for v in ("LLM_MODEL", "LLM_API_KEY", "LLM_BASE_URL"))
+    # LLM_MODEL and LLM_API_KEY are required; LLM_BASE_URL is optional (defaults to OpenAI)
+    has_env_config = all(os.environ.get(v) for v in ("LLM_MODEL", "LLM_API_KEY"))
     has_settings_config = check_llm_configured()
 
     if not has_env_config and not has_settings_config:
         errors.append(
             "OpenHands LLM not configured. Please configure LLM settings:\n"
             "  1. Run 'openhands' to go through first-time setup, or\n"
-            "  2. Set LLM_MODEL, LLM_API_KEY, LLM_BASE_URL environment variables,\n"
-            "     and use --override-with-envs flag when starting the CLI"
+            "  2. Set LLM_MODEL and LLM_API_KEY environment variables\n"
+            "     (LLM_BASE_URL is optional), and use --override-with-envs flag"
         )
 
     return errors
@@ -115,14 +116,11 @@ def generate_start_commands(state: OpenHandsState) -> list[tuple[str, float]]:
     ]
 
 
-def generate_prompt_commands(
-    text: str, state: OpenHandsState, wait: float = 10.0
-) -> list[tuple[str, float]]:
+def generate_prompt_commands(text: str, wait: float = 10.0) -> list[tuple[str, float]]:
     """Generate commands to send a single-line prompt.
 
     Args:
         text: The prompt text to send
-        state: OpenHandsState (unused but kept for consistency)
         wait: Seconds to wait for response (default 10s)
 
     Returns:
@@ -134,14 +132,11 @@ def generate_prompt_commands(
     ]
 
 
-def generate_multiline_commands(
-    text: str, state: OpenHandsState, wait: float = 15.0
-) -> list[tuple[str, float]]:
+def generate_multiline_commands(text: str, wait: float = 15.0) -> list[tuple[str, float]]:
     """Generate commands for multi-line prompt input.
 
     Args:
         text: Multi-line prompt text (lines separated by newlines)
-        state: OpenHandsState to track multiline mode
         wait: Seconds to wait for response (default 15s)
 
     Returns:
@@ -241,14 +236,14 @@ class OpenHandsCommandExpander:
             return []
         text = args[0]
         wait = float(args[1]) if len(args) > 1 else 10.0
-        return generate_prompt_commands(text, self.state, wait)
+        return generate_prompt_commands(text, wait)
 
     def _expand_multiline(self, args: list[str]) -> list[tuple[str, float]]:
         if not args:
             return []
         text = args[0]
         wait = float(args[1]) if len(args) > 1 else 15.0
-        return generate_multiline_commands(text, self.state, wait)
+        return generate_multiline_commands(text, wait)
 
     def _expand_command(self, args: list[str]) -> list[tuple[str, float]]:
         if not args:

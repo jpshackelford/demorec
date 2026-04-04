@@ -9,7 +9,7 @@ rows 30
 theme "Dracula"
 ---
 
-# Install OpenHands CLI (if not already installed)
+# Install OpenHands CLI via uv (reinstalls if already present)
 Install
 
 # Start the CLI

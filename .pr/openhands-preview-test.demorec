@@ -1,0 +1,30 @@
+# openhands-preview-test.demorec
+# Simple terminal-only demo for testing OpenHands primitives in preview
+Output openhands-preview-test.mp4
+Set Width 1280
+Set Height 720
+
+@mode terminal:openhands
+rows 30
+theme "Dracula"
+---
+
+# Show initial state
+Type "echo 'Testing OpenHands CLI Primitives'"
+Enter
+Sleep 500ms
+
+# Install OpenHands CLI
+Install
+
+# Note: Start, Prompt, WaitForReady, Quit require actual OpenHands CLI
+# and LLM configuration to work. For preview testing, Install is sufficient
+# to demonstrate the primitive expansion.
+
+Type "echo 'OpenHands CLI installed successfully'"
+Enter
+Sleep 500ms
+
+Type "which openhands"
+Enter
+Sleep 500ms

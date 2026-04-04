@@ -1,0 +1,28 @@
+$ echo 'Testing OpenHands CLI Primitives'
+Testing OpenHands CLI Primitives
+$ uv tool install openhands --python 3.12
+`openhands` is already installed
+$ export PATH="$HOME/.local/bin:$PATH"
+$ echo 'OpenHands CLI installed successfully'
+OpenHands CLI installed successfully
+$ which openhands
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

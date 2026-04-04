@@ -15,9 +15,12 @@ from .frame_capture import (
     capture_frame,
     dispatch_terminal_command,
     init_start_time,
+    parse_duration,
     setup_frames_dir,
     setup_screenshot_dir,
+    type_text,
 )
+from .modes.openhands import OpenHandsCommandExpander, WaitForReadyConfig
 from .stage import Checkpoint
 from .ttyd import find_ttyd, start_ttyd, stop_ttyd
 from .xterm import fit_to_rows, get_buffer_state, setup_container
@@ -65,7 +68,10 @@ def build_preview_result(
 
 
 class TerminalPreviewer:
-    """Previews a terminal recording, verifying checkpoints."""
+    """Previews a terminal recording, verifying checkpoints.
+
+    Supports OpenHands CLI primitives (Install, Start, Prompt, etc.).
+    """
 
     def __init__(
         self,
@@ -80,6 +86,7 @@ class TerminalPreviewer:
         self.height = height
         self._ttyd_process = None
         self._state = FrameCaptureState(capture_frames=capture_frames, screenshots=screenshots)
+        self._openhands_expander = OpenHandsCommandExpander()
 
     @property
     def screenshots(self) -> str:
@@ -132,14 +139,18 @@ class TerminalPreviewer:
     async def _run_commands(
         self, page, segment, checkpoints: list[Checkpoint], screenshot_dir: Path | None
     ) -> list[CheckpointResult]:
-        """Execute commands and verify checkpoints."""
+        """Execute commands and verify checkpoints.
+
+        Captures frame BEFORE each command for debugging visibility.
+        """
         results: list[CheckpointResult] = []
         checkpoint_map = {cp.command_index: cp for cp in checkpoints}
         await self._init_frame_capture(page)
 
         for cmd_idx, cmd in enumerate(segment.commands):
-            await self._execute_command(page, cmd)
+            # Capture frame BEFORE command for debugging
             await self._maybe_capture_frame(page)
+            await self._execute_command(page, cmd)
             result = await self._maybe_verify_checkpoint(
                 page, cmd_idx, checkpoint_map, screenshot_dir, len(results)
             )
@@ -148,13 +159,12 @@ class TerminalPreviewer:
         return results
 
     async def _init_frame_capture(self, page):
-        """Initialize timing and capture initial frame if enabled."""
+        """Initialize timing for frame capture."""
         if self._state.capture_frames and self._state.frames_dir:
             init_start_time(self._state)
-            await capture_frame(self._state, page, "terminal")
 
     async def _maybe_capture_frame(self, page):
-        """Capture frame after command if enabled."""
+        """Capture frame before command if enabled."""
         if self._state.capture_frames and self._state.frames_dir:
             await asyncio.sleep(0.05)
             await capture_frame(self._state, page, "terminal")
@@ -250,8 +260,67 @@ class TerminalPreviewer:
         await asyncio.sleep(0.05)
 
     async def _dispatch_command(self, page, cmd):
-        """Dispatch command to appropriate handler."""
-        await dispatch_terminal_command(page, cmd)
+        """Dispatch command to appropriate handler.
+
+        Handles OpenHands CLI primitives specially, expanding them to keystrokes.
+        """
+        if self._openhands_expander.is_openhands_command(cmd.name):
+            await self._execute_openhands_command(page, cmd)
+        else:
+            await dispatch_terminal_command(page, cmd)
+
+    async def _execute_openhands_command(self, page, cmd):
+        """Execute an OpenHands CLI primitive command."""
+        try:
+            expanded = self._openhands_expander.expand_command(cmd.name, cmd.args)
+        except ValueError as e:
+            print(f"Warning: {e}")
+            return
+
+        if isinstance(expanded, WaitForReadyConfig):
+            await self._wait_for_ready(page, expanded)
+            return
+
+        for keystroke, delay in expanded:
+            await self._execute_keystroke(page, keystroke)
+            if delay > 0:
+                await asyncio.sleep(delay)
+
+    async def _execute_keystroke(self, page, keystroke: str):
+        """Execute a single keystroke or key sequence."""
+        key_map = {
+            "ENTER": "Enter",
+            "CTRL+L": "Control+l",
+            "CTRL+J": "Control+j",
+            "CTRL+P": "Control+p",
+            "CTRL+Q": "Control+q",
+            "CTRL+C": "Control+c",
+        }
+        upper = keystroke.upper()
+        if upper in key_map:
+            await page.keyboard.press(key_map[upper])
+        else:
+            await type_text(page, keystroke)
+
+    async def _wait_for_ready(self, page, config: WaitForReadyConfig):
+        """Wait for terminal to show ready pattern."""
+        import time
+
+        pattern = re.compile(config.pattern)
+        start = time.time()
+
+        while time.time() - start < config.timeout:
+            buffer_state = await get_buffer_state(page)
+            if buffer_state and buffer_state.visible_lines:
+                for line in buffer_state.visible_lines[-5:]:
+                    if pattern.match(line.strip()):
+                        return
+            await asyncio.sleep(config.poll_interval)
+
+        print(
+            f"WaitForReady: Timeout after {time.time() - start:.1f}s "
+            f"waiting for pattern '{config.pattern}'"
+        )
 
     async def _verify_checkpoint(
         self, page, checkpoint: Checkpoint, screenshot_dir: Path | None, checkpoint_num: int
@@ -340,6 +409,7 @@ class ScriptPreviewer:
 
     Provides frame-by-frame capture for debugging and verification.
     Maintains continuous frame numbering across mode switches.
+    Supports OpenHands CLI primitives (Install, Start, Prompt, etc.).
     """
 
     def __init__(
@@ -355,6 +425,7 @@ class ScriptPreviewer:
         self.height = height
         self._ttyd_process = None
         self._state = FrameCaptureState(capture_frames=capture_frames, screenshots=screenshots)
+        self._openhands_expander = OpenHandsCommandExpander()
 
     @property
     def screenshots(self) -> str:
@@ -437,14 +508,88 @@ class ScriptPreviewer:
         return page
 
     async def _execute_terminal_commands(self, page, segment) -> list[CheckpointResult]:
-        """Execute terminal commands with frame capture."""
+        """Execute terminal commands with frame capture.
+
+        Handles both standard terminal commands and OpenHands CLI primitives.
+        Captures frame BEFORE each command for debugging visibility.
+        """
         for cmd in segment.commands:
-            await dispatch_terminal_command(page, cmd)
-            await asyncio.sleep(0.05)
+            # Capture frame BEFORE command for debugging
             if self._state.capture_frames and self._state.frames_dir:
-                await asyncio.sleep(0.05)
                 await capture_frame(self._state, page, "terminal")
+
+            # Check if this is an OpenHands CLI primitive
+            if self._openhands_expander.is_openhands_command(cmd.name):
+                await self._execute_openhands_command(page, cmd)
+            else:
+                await dispatch_terminal_command(page, cmd)
+            await asyncio.sleep(0.05)
         return []
+
+    async def _execute_openhands_command(self, page, cmd):
+        """Execute an OpenHands CLI primitive command.
+
+        Expands the high-level command (Install, Start, Prompt, etc.)
+        into low-level keystrokes and executes them.
+        """
+        try:
+            expanded = self._openhands_expander.expand_command(cmd.name, cmd.args)
+        except ValueError as e:
+            # State validation error (e.g., Prompt before Start)
+            print(f"Warning: {e}")
+            return
+
+        # Handle WaitForReady specially - poll for pattern match
+        if isinstance(expanded, WaitForReadyConfig):
+            await self._wait_for_ready(page, expanded)
+            return
+
+        # Execute expanded keystrokes
+        for keystroke, delay in expanded:
+            await self._execute_keystroke(page, keystroke)
+            if delay > 0:
+                await asyncio.sleep(delay)
+
+    async def _execute_keystroke(self, page, keystroke: str):
+        """Execute a single keystroke or key sequence."""
+        key_map = {
+            "ENTER": "Enter",
+            "CTRL+L": "Control+l",
+            "CTRL+J": "Control+j",
+            "CTRL+P": "Control+p",
+            "CTRL+Q": "Control+q",
+            "CTRL+C": "Control+c",
+        }
+        upper = keystroke.upper()
+        if upper in key_map:
+            await page.keyboard.press(key_map[upper])
+        else:
+            # Type regular text
+            await type_text(page, keystroke)
+
+    async def _wait_for_ready(self, page, config: WaitForReadyConfig):
+        """Wait for terminal to show ready pattern (e.g., 'You:' prompt).
+
+        Polls terminal buffer until pattern matches or timeout.
+        """
+        import time
+
+        pattern = re.compile(config.pattern)
+        start = time.time()
+
+        while time.time() - start < config.timeout:
+            buffer_state = await get_buffer_state(page)
+            if buffer_state and buffer_state.visible_lines:
+                # Check last few lines for the pattern
+                for line in buffer_state.visible_lines[-5:]:
+                    if pattern.match(line.strip()):
+                        return
+            await asyncio.sleep(config.poll_interval)
+
+        print(
+            f"WaitForReady: Timeout after {time.time() - start:.1f}s "
+            f"waiting for pattern '{config.pattern}'"
+        )
 
     async def _preview_browser_segment(
         self, segment, screenshot_dir: Path | None

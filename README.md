@@ -23,8 +23,9 @@ Existing tools make you record these separately and stitch manually. **demorec h
 ### Key Features
 
 - **Unified Recording**: Seamlessly switch between terminal and browser in a single script
-- **Multiple Terminal Sessions**: Run servers, clients, and utilities in independent terminals (`@mode terminal:server`, `@mode terminal:client`)
+- **Multiple Terminal Sessions**: Run servers, clients, and utilities in independent named sessions
 - **Persistent State**: Terminal state (working directory, environment variables, running processes) persists across mode switches
+- **Terminal Sub-modes**: Use `@mode terminal:vim` for vim command expansion
 - **AI Narration**: Add voiceover with Edge TTS (free) or ElevenLabs
 - **Vim Primitives**: High-level commands for code review demos (`Open`, `Highlight`, `Goto`, `Close`)
 
@@ -256,14 +257,14 @@ demorec checkpoints script.demorec --format json
 
 ### Terminal Sizing
 
-Control terminal dimensions for consistent viewport sizing:
+Control terminal dimensions for consistent viewport sizing using segment settings:
 
 ```tape
-@terminal:rows 30           # Exact row count (10-100)
-@terminal:size medium       # Use a preset size
-
 @mode terminal
-Set Theme "Dracula"
+rows 30                     # Exact row count (10-100)
+size "medium"               # Or use a preset size
+theme "Dracula"
+---
 Type "vim myfile.py"
 Enter
 ```
@@ -282,9 +283,9 @@ Enter
 For AI agents creating code review demos, these commands handle vim complexity internally:
 
 ```tape
-@mode terminal
-@terminal:rows 30
-
+@mode terminal:vim
+rows 30
+---
 Open "src/api.py"           # Open file with line numbers enabled
 Highlight "10-20"           # Navigate to lines and select visually
 Highlight "45-55"           # Jump to next highlight
@@ -336,9 +337,52 @@ demorec supports switching between terminal and browser modes, with **persistent
 
 ```tape
 @mode terminal               # Default terminal session
-@mode terminal:server        # Named session "server" (independent)
-@mode terminal:client        # Named session "client" (independent)
+@mode terminal:vim           # Terminal with vim sub-mode (command expansion)
 @mode browser                # Browser recording
+
+# Named sessions use the 'name' setting:
+@mode terminal
+name "server"
+---
+# Commands for the "server" session...
+# Note: The old @mode terminal:server syntax is no longer supported.
+# Use the 'name' setting instead (as shown above).
+```
+
+#### Segment Settings Syntax
+
+Settings can be specified immediately after `@mode`. Use a blank line or `---` delimiter to end settings and begin commands:
+
+```tape
+@mode terminal:vim
+rows 30
+theme "Dracula"
+name "editor"
+---
+Open "file.py"
+Highlight "6-8"
+Close
+```
+
+Supported settings: `rows`, `size`, `theme`, `name`
+
+Sub-modes (e.g., `terminal:vim`) and session names can be combined, as shown in the example above.
+
+#### Terminal Sub-modes
+
+Sub-modes enable specialized command expansion:
+
+| Sub-mode | Syntax | Purpose |
+|----------|--------|---------|
+| `vim` | `@mode terminal:vim` | Enables vim command expansion for `Open`, `Highlight`, `Goto`, `Close` |
+
+```tape
+@mode terminal:vim
+rows 30
+---
+Open "src/api.py"
+Highlight "10-20"
+Close
 ```
 
 #### Session Persistence
@@ -357,9 +401,9 @@ Each terminal session is backed by tmux, which means:
 | Session | Syntax | Use Case |
 |---------|--------|----------|
 | Default | `@mode terminal` | General commands, setup |
-| Named | `@mode terminal:server` | Long-running server process |
-| Named | `@mode terminal:client` | Client/testing commands |
-| Named | `@mode terminal:logs` | Tail logs or monitoring |
+| Named | `@mode terminal` + `name "server"` | Long-running server process |
+| Named | `@mode terminal` + `name "client"` | Client/testing commands |
+| Named | `@mode terminal` + `name "logs"` | Tail logs or monitoring |
 
 Named sessions are **completely independent**—each has its own shell process, environment, and working directory. The default session (`@mode terminal`) is also persistent but separate from named sessions.
 
@@ -367,7 +411,9 @@ Named sessions are **completely independent**—each has its own shell process, 
 
 ```tape
 # 1. Start server in dedicated session
-@mode terminal:server
+@mode terminal
+name "server"
+---
 Type "npm run dev"
 Enter
 Sleep 2s
@@ -378,12 +424,16 @@ Navigate "http://localhost:3000"
 Sleep 2s
 
 # 3. Make API calls from client session
-@mode terminal:client  
+@mode terminal
+name "client"
+---
 Type "curl localhost:3000/api/health"
 Enter
 
 # 4. Return to server session - see the request logs
-@mode terminal:server
+@mode terminal
+name "server"
+---
 Sleep 1s
 ```
 
@@ -391,13 +441,13 @@ Sleep 1s
 
 1. **Set up state early:** Initialize environment variables and working directories at the start—they persist throughout.
 
-2. **Use named sessions for servers:** Start long-running processes in `terminal:server` so switching modes won't kill them.
+2. **Use named sessions for servers:** Start long-running processes in a named session so switching modes won't kill them.
 
 3. **Show state preservation explicitly:** Run `pwd` or `echo $VAR` after switching back to demonstrate persistence—viewers love this!
 
 4. **Clean up gracefully:** Use `Ctrl+C` in server terminals before ending to show clean shutdown.
 
-5. **Use meaningful names:** Prefer `terminal:api`, `terminal:frontend`, `terminal:logs` over generic names.
+5. **Use meaningful names:** Prefer descriptive names like `"api"`, `"frontend"`, `"logs"` for clarity.
 
 ### Terminal Commands
 
@@ -594,6 +644,7 @@ Set Height 720
 # Set up environment in default terminal
 # ─────────────────────────────────────
 @mode terminal
+
 Type "export API_KEY='demo-key-123'"
 Enter
 Type "cd /tmp && mkdir -p myapp && cd myapp"
@@ -603,7 +654,9 @@ Sleep 500ms
 # ─────────────────────────────────────
 # Start server in named terminal
 # ─────────────────────────────────────
-@mode terminal:server
+@mode terminal
+name "server"
+---
 Type "cd /tmp/myapp"
 Enter
 Type "echo '<h1>Hello World</h1>' > index.html"
@@ -622,7 +675,9 @@ Sleep 2s
 # ─────────────────────────────────────
 # Test from client terminal
 # ─────────────────────────────────────
-@mode terminal:client
+@mode terminal
+name "client"
+---
 Type "curl http://localhost:3000/"
 Enter
 Sleep 1s
@@ -630,7 +685,9 @@ Sleep 1s
 # ─────────────────────────────────────
 # Check server logs (session preserved)
 # ─────────────────────────────────────
-@mode terminal:server
+@mode terminal
+name "server"
+---
 # We see the server still running with request logs
 Sleep 2s
 
@@ -638,6 +695,7 @@ Sleep 2s
 # Original terminal state is intact!
 # ─────────────────────────────────────
 @mode terminal
+
 Type "echo $API_KEY && pwd"
 Enter
 # Shows: demo-key-123 and /tmp/myapp
@@ -646,15 +704,17 @@ Sleep 1s
 # ─────────────────────────────────────
 # Clean up
 # ─────────────────────────────────────
-@mode terminal:server
+@mode terminal
+name "server"
+---
 Ctrl+C
 Sleep 500ms
 ```
 
 **Key points demonstrated:**
-- State in `terminal` (env vars, working dir) persists across all mode switches
-- Server in `terminal:server` keeps running while you switch to browser and client
-- Each named session is independent—`terminal:client` doesn't share state with `terminal:server`
+- State in the default terminal (env vars, working dir) persists across all mode switches
+- Server in the `"server"` session keeps running while you switch to browser and client
+- Each named session is independent—`"client"` doesn't share state with `"server"`
 - Returning to any terminal reconnects to the same session
 
 ### Code Review Demo (Vim Primitives)
@@ -666,9 +726,10 @@ Set Height 720
 
 # @voice edge:jenny
 
-@mode terminal
-@terminal:rows 30
-Set Theme "Dracula"
+@mode terminal:vim
+rows 30
+theme "Dracula"
+---
 
 # Open the file using high-level primitives
 Open "src/api.py"

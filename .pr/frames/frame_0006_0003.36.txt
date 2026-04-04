@@ -1,0 +1,28 @@
+$ echo '=== OpenHands CLI Primitives Demo ==='
+=== OpenHands CLI Primitives Demo ===
+$ echo 'Step 1: Install primitive'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

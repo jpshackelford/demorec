@@ -1,6 +1,6 @@
 # openhands-preview-test.demorec
-# Simple terminal-only demo for testing OpenHands primitives in preview
-Output openhands-preview-test.mp4
+# Demo showing OpenHands CLI primitives in action
+Output openhands-primitives-demo.mp4
 Set Width 1280
 Set Height 720
 
@@ -9,22 +9,41 @@ rows 30
 theme "Dracula"
 ---
 
-# Show initial state
-Type "echo 'Testing OpenHands CLI Primitives'"
+# Show what we're testing
+Type "echo '=== OpenHands CLI Primitives Demo ==='"
+Enter
+Sleep 1s
+
+# Install OpenHands CLI (demonstrates Install primitive)
+Type "echo 'Step 1: Install primitive'"
 Enter
 Sleep 500ms
 
-# Install OpenHands CLI
 Install
 
-# Note: Start, Prompt, WaitForReady, Quit require actual OpenHands CLI
-# and LLM configuration to work. For preview testing, Install is sufficient
-# to demonstrate the primitive expansion.
+Type "echo 'OpenHands CLI installed!'"
+Enter
+Sleep 1s
 
-Type "echo 'OpenHands CLI installed successfully'"
+# Start the CLI (demonstrates Start primitive)
+Type "echo 'Step 2: Start primitive'"
 Enter
 Sleep 500ms
 
-Type "which openhands"
+Start
+
+# Send a simple prompt (demonstrates Prompt primitive)
+Prompt "What is 2+2? Reply with just the number."
+
+# Wait for AI to finish (demonstrates WaitForReady primitive)
+# Using 120s timeout since AI responses can take time
+WaitForReady 120
+
+Sleep 2s
+
+# Exit cleanly (demonstrates Quit primitive)
+Quit
+
+Type "echo 'Demo complete! All primitives working.'"
 Enter
-Sleep 500ms
+Sleep 1s

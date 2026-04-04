@@ -559,17 +559,19 @@ class TestWaitForReadyExpansion:
         assert config.pattern == r">>>"
 
     def test_default_pattern(self):
-        """Should use default pattern matching 'You:' prompt."""
+        """Should use default pattern detecting absence of 'Working' indicator."""
         expander = OpenHandsCommandExpander()
         expander.expand_command("Start", [])
         config = expander.expand_command("WaitForReady", [])
         assert config.pattern == DEFAULT_READY_PATTERN
-        # Verify pattern matches expected format
+        # Verify pattern is a negative pattern (starts with !)
+        assert config.pattern.startswith("!")
+        # Verify the inner pattern matches the Working indicator
         import re
-        pattern = re.compile(config.pattern)
-        assert pattern.match("You:")
-        assert pattern.match("You:   ")
-        assert not pattern.match("You: some text")
+        inner_pattern = re.compile(config.pattern[1:])
+        assert inner_pattern.search("⠴ Working (8s • ESC: pause)")
+        assert inner_pattern.search(" ⠼ Working (39s • ESC: pause)")
+        assert not inner_pattern.search("Type your message")
 
     def test_is_openhands_command(self):
         """WaitForReady should be recognized as an OpenHands command."""

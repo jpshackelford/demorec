@@ -27,9 +27,11 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-# Default pattern to detect when OpenHands CLI is ready for input
-# Matches the "You:" prompt that appears when the CLI is waiting for user input
-DEFAULT_READY_PATTERN = r"^You:\s*$"
+# Default pattern to detect when OpenHands CLI is BUSY (not ready)
+# When the CLI is processing, it shows: "⠴ Working (8s • ESC: pause)"
+# We detect readiness by the ABSENCE of this pattern.
+# The pattern is prefixed with ! to indicate negative matching in WaitForReady
+DEFAULT_READY_PATTERN = r"!Working \("
 
 # Default timeout for waiting (seconds)
 DEFAULT_WAIT_TIMEOUT = 60.0
@@ -116,6 +118,9 @@ def generate_install_commands(version: str | None = None) -> list[tuple[str, flo
 def generate_start_commands(state: OpenHandsState) -> list[tuple[str, float]]:
     """Generate commands to start OpenHands CLI.
 
+    Uses --override-with-envs flag when LLM environment variables are set
+    to skip the settings dialog.
+
     Args:
         state: OpenHandsState to update
 
@@ -124,10 +129,20 @@ def generate_start_commands(state: OpenHandsState) -> list[tuple[str, float]]:
     """
     state.running = True
 
-    return [
-        ("openhands", 0),
-        ("ENTER", 5.0),  # Wait for CLI to initialize
-    ]
+    # Check if LLM is configured via environment variables
+    has_env_config = all(os.environ.get(v) for v in ("LLM_MODEL", "LLM_API_KEY"))
+
+    if has_env_config:
+        # Use --override-with-envs to skip the settings dialog
+        return [
+            ("openhands --override-with-envs", 0),
+            ("ENTER", 5.0),  # Wait for CLI to initialize
+        ]
+    else:
+        return [
+            ("openhands", 0),
+            ("ENTER", 5.0),  # Wait for CLI to initialize
+        ]
 
 
 def generate_prompt_commands(text: str, wait: float = 10.0) -> list[tuple[str, float]]:

@@ -303,17 +303,49 @@ class TerminalPreviewer:
             await type_text(page, keystroke)
 
     async def _wait_for_ready(self, page, config: WaitForReadyConfig):
-        """Wait for terminal to show ready pattern."""
+        """Wait for terminal to show ready pattern.
+
+        If pattern starts with '!', waits for the pattern to NOT be present
+        (negative matching). For negative patterns, first waits briefly for
+        the pattern to appear (giving the process time to start), then waits
+        for it to disappear.
+        """
         import time
 
-        pattern = re.compile(config.pattern)
+        # Check for negative pattern (absence detection)
+        is_negative = config.pattern.startswith("!")
+        pattern_str = config.pattern[1:] if is_negative else config.pattern
+        pattern = re.compile(pattern_str)
         start = time.time()
+
+        # For negative patterns, first wait for the pattern to appear
+        # (give process up to 5 seconds to start showing the indicator)
+        if is_negative:
+            appeared = False
+            while time.time() - start < 5.0:
+                buffer_state = await get_buffer_state(page)
+                if buffer_state and buffer_state.visible_lines:
+                    if any(pattern.search(line) for line in buffer_state.visible_lines):
+                        appeared = True
+                        break
+                await asyncio.sleep(config.poll_interval)
+            # Reset start time for the main wait
+            start = time.time()
 
         while time.time() - start < config.timeout:
             buffer_state = await get_buffer_state(page)
             if buffer_state and buffer_state.visible_lines:
-                for line in buffer_state.visible_lines[-5:]:
-                    if pattern.match(line.strip()):
+                # Check all visible lines for the pattern
+                found = any(
+                    pattern.search(line) for line in buffer_state.visible_lines
+                )
+                if is_negative:
+                    # Negative: ready when pattern is NOT found
+                    if not found:
+                        return
+                else:
+                    # Positive: ready when pattern IS found
+                    if found:
                         return
             await asyncio.sleep(config.poll_interval)
 
@@ -568,21 +600,49 @@ class ScriptPreviewer:
             await type_text(page, keystroke)
 
     async def _wait_for_ready(self, page, config: WaitForReadyConfig):
-        """Wait for terminal to show ready pattern (e.g., 'You:' prompt).
+        """Wait for terminal to show ready pattern.
 
-        Polls terminal buffer until pattern matches or timeout.
+        If pattern starts with '!', waits for the pattern to NOT be present
+        (negative matching). For negative patterns, first waits briefly for
+        the pattern to appear (giving the process time to start), then waits
+        for it to disappear.
         """
         import time
 
-        pattern = re.compile(config.pattern)
+        # Check for negative pattern (absence detection)
+        is_negative = config.pattern.startswith("!")
+        pattern_str = config.pattern[1:] if is_negative else config.pattern
+        pattern = re.compile(pattern_str)
         start = time.time()
+
+        # For negative patterns, first wait for the pattern to appear
+        # (give process up to 5 seconds to start showing the indicator)
+        if is_negative:
+            appeared = False
+            while time.time() - start < 5.0:
+                buffer_state = await get_buffer_state(page)
+                if buffer_state and buffer_state.visible_lines:
+                    if any(pattern.search(line) for line in buffer_state.visible_lines):
+                        appeared = True
+                        break
+                await asyncio.sleep(config.poll_interval)
+            # Reset start time for the main wait
+            start = time.time()
 
         while time.time() - start < config.timeout:
             buffer_state = await get_buffer_state(page)
             if buffer_state and buffer_state.visible_lines:
-                # Check last few lines for the pattern
-                for line in buffer_state.visible_lines[-5:]:
-                    if pattern.match(line.strip()):
+                # Check all visible lines for the pattern
+                found = any(
+                    pattern.search(line) for line in buffer_state.visible_lines
+                )
+                if is_negative:
+                    # Negative: ready when pattern is NOT found
+                    if not found:
+                        return
+                else:
+                    # Positive: ready when pattern IS found
+                    if found:
                         return
             await asyncio.sleep(config.poll_interval)
 

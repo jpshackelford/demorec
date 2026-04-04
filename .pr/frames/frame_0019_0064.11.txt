@@ -1,0 +1,29 @@
+
+                            ___                    _   _                 _
+                           /  _ \ _ __   ___ _ __ | | | | __ _ _ __   __| |___
+                           | | | | '_ \ / _ \ '_ \| |_| |/ _` | '_ \ / _` / __|
+                           | |_| | |_) |  __/ | | |  _  | (_| | | | | (_| \__ \
+                           \___ /| .__/ \___|_| |_|_| |_|\__,_|_| |_|\__,_|___/
+                                 |_|
+                                         OpenHands CLI v1.14.0
+                                                                                                      ▂
+  All set up!
+  Initialized conversation 970741b29a86463bbcfefc5fd9a8b46f
+
+  What do you want to build?
+  1. Ask questions, edit files, or run commands.
+  2. Use @ to look up a file in the folder structure
+  3. Type /help for help, /feedback to leave anonymous feedback, or / to scroll through available
+  commands
+
+  Experimental Feature: Critic + Iterative Refinement Mode
+
+
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ Type your message, @mention a file, or / for commands                                              │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ [Ctrl+L for multi-line • Ctrl+X for custom editor] • /workspace/demorec ctx 14.68K / 1M • $ 0.0277 (↑
+ 14.68K ↓ 86 cache 56%)
+
+
+ ^q Quit the application  ^l Toggle single/multi-line input  ^o Toggle Cells  ^j Submit mult▏^p palette

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/OpenHands/demorec/compare/demorec-v0.1.1...demorec-v0.2.0) (2026-04-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* @mode terminal:name now sets submode, not session name. Use 'name' setting for session names.
+
+### ✨ Features
+
+* add terminal sub-mode syntax and settings block ([fb16c74](https://github.com/OpenHands/demorec/commit/fb16c74b55f74db1c61ae2aee2e834ef4c7c6bf6))
+
 ## [0.1.1](https://github.com/jpshackelford/demorec/compare/demorec-v0.1.0...demorec-v0.1.1) (2026-04-02)
 
 

@@ -4,6 +4,7 @@ Uses ttyd to create a real PTY connected to xterm.js in a browser,
 enabling full ANSI support, interactive commands, spinners, etc.
 
 Supports persistent sessions across mode switches and multiple named sessions.
+Supports sub-modes for tool-specific primitives (vim, openhands).
 """
 
 import asyncio
@@ -142,6 +143,8 @@ class TerminalRecorder(CommandExecutorMixin):
 
     Supports persistent sessions via TerminalSessionManager, preserving
     terminal state across mode switches.
+
+    Supports sub-modes for tool-specific primitives (vim, openhands).
     """
 
     # Size presets: name -> target rows (for 720p viewport)
@@ -161,13 +164,20 @@ class TerminalRecorder(CommandExecutorMixin):
         rows: int | None = None,
         session_manager: TerminalSessionManager | None = None,
         session_name: str = "default",
+        submode: str | None = None,
     ):
         self._init_dimensions(width, height, framerate)
         self._init_theme_settings()
         self._init_row_settings(size, rows)
-        self._vim_expander = VimCommandExpander(terminal_rows=self.desired_rows or 24)
+        self._init_expanders(submode)
         self.session_manager = session_manager
         self.session_name = session_name
+        self.submode = submode
+
+    def _init_expanders(self, submode: str | None):
+        """Initialize command expanders based on submode."""
+        terminal_rows = self.desired_rows or 24
+        self._vim_expander = VimCommandExpander(terminal_rows=terminal_rows)
 
     def _init_dimensions(self, width: int, height: int, framerate: int):
         """Initialize dimension settings."""
@@ -380,23 +390,47 @@ class TerminalRecorder(CommandExecutorMixin):
 
     async def _execute_command(self, page, cmd: Command):
         """Execute a command in the real PTY."""
-        # Check for high-level vim commands first
-        if self._vim_expander.is_vim_command(cmd.name):
-            expanded = self._vim_expander.expand_command(cmd.name, cmd.args)
-            await self._execute_vim_sequence(page, expanded)
+        # Try vim command expansion first
+        expanded = self._try_expand_vim_command(cmd)
+        if expanded is not None:
+            await self._execute_expanded_sequence(page, expanded)
             return
 
+        # Fall through to base terminal commands
         handler = TERMINAL_COMMANDS.get(cmd.name)
         if handler:
             await handler(self, page, cmd)
 
-    async def _execute_vim_sequence(self, page, commands: list[tuple[str, float]]):
-        """Execute a sequence of vim keystrokes with optional delays."""
-        special_keys = {"ENTER": "Enter", "ESCAPE": "Escape", "TAB": "Tab"}
+    def _try_expand_vim_command(self, cmd: Command) -> list[tuple[str, float]] | None:
+        """Try to expand command as a vim command."""
+        if self._vim_expander.is_vim_command(cmd.name):
+            return self._vim_expander.expand_command(cmd.name, cmd.args)
+        return None
+
+    # Map expanded keystroke names to Playwright key codes
+    EXPANDED_SPECIAL_KEYS = {
+        "ENTER": "Enter",
+        "ESCAPE": "Escape",
+        "TAB": "Tab",
+        "CTRL+L": "Control+l",
+        "CTRL+J": "Control+j",
+        "CTRL+P": "Control+p",
+        "CTRL+Q": "Control+q",
+        "CTRL+C": "Control+c",
+        "CTRL+O": "Control+o",
+        "CTRL+X": "Control+x",
+    }
+
+    async def _execute_expanded_sequence(self, page, commands: list[tuple[str, float]]):
+        """Execute a sequence of expanded keystrokes with optional delays."""
         for keys, delay in commands:
-            if keys in special_keys:
-                await page.keyboard.press(special_keys[keys])
-            else:
-                await self._send_keys(page, keys, delay=0.02)
+            await self._send_expanded_keystroke(page, keys)
             if delay > 0:
                 await asyncio.sleep(delay)
+
+    async def _send_expanded_keystroke(self, page, keys: str):
+        """Send a single expanded keystroke or text."""
+        if keys in self.EXPANDED_SPECIAL_KEYS:
+            await page.keyboard.press(self.EXPANDED_SPECIAL_KEYS[keys])
+        else:
+            await self._send_keys(page, keys, delay=0.02)

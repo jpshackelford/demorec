@@ -93,7 +93,7 @@ class TestRunnerInit:
 
 
 class TestRunnerVimPrimitives:
-    """Test _uses_vim_primitives method."""
+    """Test _uses_vim_submode method."""
 
     def test_detects_open_command(self):
         """Should detect Open as vim primitive."""
@@ -103,7 +103,7 @@ class TestRunnerVimPrimitives:
             ]
         )
         runner = Runner(plan)
-        assert runner._uses_vim_primitives() is True
+        assert runner._uses_vim_submode() is True
         runner.cleanup()
 
     def test_detects_highlight_command(self):
@@ -114,7 +114,7 @@ class TestRunnerVimPrimitives:
             ]
         )
         runner = Runner(plan)
-        assert runner._uses_vim_primitives() is True
+        assert runner._uses_vim_submode() is True
         runner.cleanup()
 
     def test_detects_close_command(self):
@@ -123,7 +123,7 @@ class TestRunnerVimPrimitives:
             segments=[Segment(mode="terminal", commands=[Command("Close", [])])]
         )
         runner = Runner(plan)
-        assert runner._uses_vim_primitives() is True
+        assert runner._uses_vim_submode() is True
         runner.cleanup()
 
     def test_detects_goto_command(self):
@@ -132,7 +132,7 @@ class TestRunnerVimPrimitives:
             segments=[Segment(mode="terminal", commands=[Command("Goto", ["50"])])]
         )
         runner = Runner(plan)
-        assert runner._uses_vim_primitives() is True
+        assert runner._uses_vim_submode() is True
         runner.cleanup()
 
     def test_no_vim_primitives(self):
@@ -146,7 +146,7 @@ class TestRunnerVimPrimitives:
             ]
         )
         runner = Runner(plan)
-        assert runner._uses_vim_primitives() is False
+        assert runner._uses_vim_submode() is False
         runner.cleanup()
 
     def test_multiple_segments(self):
@@ -158,7 +158,7 @@ class TestRunnerVimPrimitives:
             ]
         )
         runner = Runner(plan)
-        assert runner._uses_vim_primitives() is True
+        assert runner._uses_vim_submode() is True
         runner.cleanup()
 
 

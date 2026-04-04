@@ -347,7 +347,7 @@ def parse_script(path: Path) -> Plan:
     return ctx.plan
 
 
-def _parse_line(line: str, line_num: int, ctx: _ParseContext):
+def _parse_line(line: str, line_num: int, ctx: _ParseContext):  # length-ok
     """Parse a single line from the script."""
     # Handle blank lines and --- delimiter
     if not line:
@@ -400,7 +400,7 @@ def _dispatch_command(tokens: list[str], line_num: int, ctx: _ParseContext):  # 
     _add_command(cmd_name, cmd_args, line_num, ctx)
 
 
-def _apply_segment_setting(name: str, args: list[str], line_num: int, ctx: _ParseContext):
+def _apply_segment_setting(name: str, args: list[str], line_num: int, ctx: _ParseContext):  # length-ok
     """Apply a segment setting to the current segment."""
     if not args or not ctx.current_segment:
         return

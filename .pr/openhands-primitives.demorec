@@ -32,21 +32,39 @@ Slide 4 5s
 Slide 5 3s
 
 # ═══════════════════════════════════════════════════
-# TERMINAL: Show the script first
+# TERMINAL: Show this demo script using vim
 # ═══════════════════════════════════════════════════
 @mode terminal
 Set Theme "Dracula"
 
-# @narrate:before "First, let's look at this demo script."
-Type "cat openhands-primitives.demorec | head -30"
+# Navigate to .pr directory where this script lives
+Type "cd /workspace/demorec/.pr"
 Enter
-Sleep 3s
+Sleep 500ms
 
-# @narrate:after "Notice the openhands submode and the high-level commands."
-Sleep 2s
+# @narrate:before "First, let's look at this demo script."
+Type "vim openhands-primitives.demorec"
+Enter
+Sleep 1s
 
-# Clear for next section
-Ctrl+l
+# Enable line numbers
+Type ":set number"
+Enter
+Sleep 500ms
+
+# Jump to the OpenHands section (around line 67)
+Type "67G"
+Sleep 300ms
+Type "zt"
+Sleep 500ms
+
+# @narrate:during "Notice the terminal openhands submode syntax. Each primitive is a single line - Install, Start, Prompt, WaitForReady, Quit."
+Sleep 4s
+
+# Exit vim
+Escape
+Type ":q"
+Enter
 Sleep 500ms
 
 # ═══════════════════════════════════════════════════
@@ -57,7 +75,7 @@ rows 30
 theme "Dracula"
 ---
 
-# @narrate:before "Now let's run the OpenHands CLI using our primitives."
+# @narrate:before "Now let's run the OpenHands CLI using these primitives."
 
 # Install OpenHands CLI (skip if already installed)
 # @narrate:during "The Install command runs uv tool install openhands."
@@ -67,19 +85,25 @@ Install
 # @narrate:before "Start launches the CLI and waits for it to be ready."
 Start
 
+# Wait for CLI to be fully ready
+WaitForReady 30
+
+# @narrate:during "The CLI is ready. Now let's send a prompt."
+Sleep 1s
+
 # Send a prompt
 # @narrate:before "Prompt sends our message to the AI."
 Prompt "What is 2 + 2? Answer in one word."
 
 # Wait for response
-# @narrate:during "WaitForReady polls the terminal until the You: prompt appears."
-WaitForReady 30
+# @narrate:during "WaitForReady polls the terminal until the AI finishes responding."
+WaitForReady 60
 
-# @narrate:after "The AI responded. WaitForReady detected when it was done."
+# @narrate:after "The AI responded."
 Sleep 2s
 
 # Clean exit
-# @narrate:before "Finally, Quit exits the CLI cleanly."
+# @narrate:before "Finally, Quit exits the CLI cleanly with Ctrl+Q."
 Quit
 
 # ═══════════════════════════════════════════════════

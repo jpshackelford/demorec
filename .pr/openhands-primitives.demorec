@@ -1,0 +1,116 @@
+# openhands-primitives.demorec
+# Demonstrates the new OpenHands CLI primitives for demorec
+Output openhands-primitives.mp4
+Set Width 1280
+Set Height 720
+
+# @voice edge:jenny
+
+# ═══════════════════════════════════════════════════
+# TITLE SLIDE
+# ═══════════════════════════════════════════════════
+@mode presentation "slides.md"
+Set Theme "default"
+
+# @narrate:during "OpenHands CLI Primitives. High-level commands for demo recording."
+Slide 1 4s
+
+# ═══════════════════════════════════════════════════
+# PROBLEM + SOLUTION SLIDES
+# ═══════════════════════════════════════════════════
+
+# @narrate:during "Recording OpenHands CLI demos used to require complex keystroke sequences. Manual typing, waiting for startup, timing AI responses."
+Slide 2 6s
+
+# @narrate:during "Now demorec supports high-level primitives. Install, Start, Prompt, WaitForReady, and Quit. Each handles the complexity internally."
+Slide 3 7s
+
+# @narrate:during "Here's an example script. One line per action. No keystroke details to worry about."
+Slide 4 5s
+
+# @narrate:during "Let's see it in action."
+Slide 5 3s
+
+# ═══════════════════════════════════════════════════
+# TERMINAL: Show this demo script using vim
+# ═══════════════════════════════════════════════════
+@mode terminal
+Set Theme "Dracula"
+
+# Navigate to .pr directory where this script lives
+Type "cd /workspace/demorec/.pr"
+Enter
+Sleep 500ms
+
+# @narrate:before "First, let's look at this demo script."
+Type "vim openhands-primitives.demorec"
+Enter
+Sleep 1s
+
+# Enable line numbers
+Type ":set number"
+Enter
+Sleep 500ms
+
+# Jump to the OpenHands section (around line 67)
+Type "67G"
+Sleep 300ms
+Type "zt"
+Sleep 500ms
+
+# @narrate:during "Notice the terminal openhands submode syntax. Each primitive is a single line - Install, Start, Prompt, WaitForReady, Quit."
+Sleep 4s
+
+# Exit vim
+Escape
+Type ":q"
+Enter
+Sleep 500ms
+
+# ═══════════════════════════════════════════════════
+# TERMINAL: Demonstrate the primitives
+# ═══════════════════════════════════════════════════
+@mode terminal:openhands
+rows 30
+theme "Dracula"
+---
+
+# @narrate:before "Now let's run the OpenHands CLI using these primitives."
+
+# Install OpenHands CLI (skip if already installed)
+# @narrate:during "The Install command runs uv tool install openhands."
+Install
+
+# Start the CLI
+# @narrate:before "Start launches the CLI and waits for it to be ready."
+Start
+
+# Wait for CLI to be fully ready
+WaitForReady 30
+
+# @narrate:during "The CLI is ready. Now let's send a prompt."
+Sleep 1s
+
+# Send a prompt
+# @narrate:before "Prompt sends our message to the AI."
+Prompt "What is 2 + 2? Answer in one word."
+
+# Wait for response
+# @narrate:during "WaitForReady polls the terminal until the AI finishes responding."
+WaitForReady 60
+
+# @narrate:after "The AI responded."
+Sleep 2s
+
+# Clean exit
+# @narrate:before "Finally, Quit exits the CLI cleanly with Ctrl+Q."
+Quit
+
+# ═══════════════════════════════════════════════════
+# CLOSING SLIDE
+# ═══════════════════════════════════════════════════
+@mode presentation "slides.md"
+
+# @narrate:during "OpenHands CLI Primitives. Available now in demorec. Check out the repo and try it on your next demo."
+Slide 6 5s
+

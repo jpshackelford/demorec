@@ -1,0 +1,29 @@
+
+                            ___                    _   _                 _
+                           /  _ \ _ __   ___ _ __ | | | | __ _ _ __   __| |___
+                           | | | | '_ \ / _ \ '_ \| |_| |/ _` | '_ \ / _` / __|
+                           | |_| | |_) |  __/ | | |  _  | (_| | | | | (_| \__ \
+                           \___ /| .__/ \___|_| |_|_| |_|\__,_|_| |_|\__,_|___/
+                                 |_|
+                                         OpenHands CLI v1.14.0
+                      ╭──────────────────────────────────────────────────────────╮                    ▅
+  All set up!         │                                                          │
+  Initialized conversa│                                                          │
+                      │                                                          │
+  What do you want to │                    Terminate session?                    │
+  1. Ask questions, ed│                                                          │
+  2. Use @ to look up │                                                          │
+  3. Type /help for he│                                                          │rough available
+  commands            │   ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔    ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔   │
+                      │         Yes, proceed                No, dismiss          │
+  Experimental Feature│   ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁    ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁   │
+                      │                                                          │
+                      ╰──────────────────────────────────────────────────────────╯
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ Type your message, @mention a file, or / for commands                                              │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ [Ctrl+L for multi-line • Ctrl+X for custom editor] • /workspace/demorec ctx 14.68K / 1M • $ 0.0277 (↑
+ 14.68K ↓ 86 cache 56%)
+
+
+ ^q Quit the application  ^l Toggle single/multi-line input  ^o Toggle Cells  ^j Submit mult▏^p palette

@@ -1,0 +1,27 @@
+# openhands_demo.demorec - Demo using OpenHands CLI primitives
+Output openhands_demo.mp4
+Set Width 1280
+Set Height 720
+
+# Use OpenHands CLI submode with settings
+@mode terminal:openhands
+rows 30
+theme "Dracula"
+---
+
+# Install OpenHands CLI via uv (reinstalls if already present)
+Install
+
+# Start the CLI
+Start
+
+# Send a simple prompt and wait for AI to finish responding
+Prompt "Tell me a dad joke"
+WaitForReady
+
+# Send another prompt (WaitForReady uses 60s default timeout)
+Prompt "Now tell me a programming joke"
+WaitForReady 120  # Wait up to 120s for longer responses
+
+# Exit cleanly
+Quit

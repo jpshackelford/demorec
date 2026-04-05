@@ -1,0 +1,28 @@
+$ echo '=== OpenHands CLI Primitives Demo ==='
+=== OpenHands CLI Primitives Demo ===
+$ echo 'Step 1: Install primitive'
+Step 1: Install primitive
+$ uv tool install openhands --python 3.12
+`openhands` is already installed
+$ export PATH="$HOME/.local/bin:$PATH"
+$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -15,6 +15,7 @@ from .audio import (
     run_ffmpeg,
     write_concat_file,
 )
+from .modes import openhands as openhands_module
 from .modes import vim as vim_module
 from .modes.browser import BrowserRecorder
 from .modes.presentation import PresentationRecorder
@@ -60,6 +61,10 @@ class Runner:
                     return True
         return False
 
+    def _uses_openhands_submode(self) -> bool:
+        """Check if any segment uses openhands submode."""
+        return any(seg.submode == "openhands" for seg in self.plan.segments)
+
     def _uses_presentation_mode(self) -> bool:
         """Check if any segment uses presentation mode."""
         return any(seg.mode == "presentation" for seg in self.plan.segments)
@@ -69,6 +74,8 @@ class Runner:
         errors = []
         if self._uses_vim_submode():
             errors.extend(vim_module.preflight_check())
+        if self._uses_openhands_submode():
+            errors.extend(openhands_module.preflight_check())
         if self._uses_presentation_mode():
             from .marp import check_marp_installed
 
